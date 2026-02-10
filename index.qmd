@@ -83,7 +83,7 @@ title: "Βιοστατιστική – Εργαστήρια"
 
 ## Χρήσιμοι σύνδεσμοι
 
-- Posit Cloud:  [https://posit.cloud] (https://posit.cloud)
+- Posit Cloud:  [https://posit.cloud/] (https://posit.cloud)
 - R Project:  [https://cloud.r-project.org/](https://cloud.r-project.org/)
 - RStudio: [https://posit.co/download/rstudio-desktop/](https://posit.co/download/rstudio-desktop/)
 
