@@ -336,15 +336,16 @@ ggplot(df, aes(x = systolic_bp)) +
 
 ---
 
-## 5. “Ποια αναπαράσταση πάει με ποια μεταβλητή;” (πίνακας-κανόνας)
+## 5. «Ποια αναπαράσταση πάει με ποια μεταβλητή;»  
+*(πίνακας-κανόνας)*
 
-Είδος μεταβλητής	Περιγραφή	Συνηθισμένα γραφήματα
-Binary (categorical)	n (%)	bar plot
-Nominal (categorical)	n (%)	bar plot
-Ordinal (categorical)	n (%) (με σειρά)	bar plot (με σειρά)
-Discrete (numeric)	median (IQR) ή mean (SD)	histogram
-Continuous (numeric)	mean (SD) ή median (IQR)	histogram, boxplot
-
+| Είδος μεταβλητής | Περιγραφή | Συνηθισμένα γραφήματα |
+|---|---|---|
+| Binary (categorical) | n (%) | Bar plot |
+| Nominal (categorical) | n (%) | Bar plot |
+| Ordinal (categorical) | n (%) (με σωστή σειρά) | Bar plot (με σειρά) |
+| Discrete (numeric) | Median (IQR) ή Mean (SD) | Histogram |
+| Continuous (numeric) | Mean (SD) ή Median (IQR) | Histogram, Boxplot |
 
 ---
 
