@@ -1,6 +1,5 @@
 ---
 title: "Lab 1 – Είδη Μεταβλητών & Σωστή Αναπαράσταση (R)"
-subtitle: "Βιοστατιστική"
 format:
   html:
     toc: true
@@ -11,27 +10,41 @@ execute:
   message: false
 ---
 
-# Lab 1 – Είδη Μεταβλητών & Σωστή Αναπαράσταση (R)
-
 ## Στόχοι
 Με το τέλος του εργαστηρίου θα μπορείς να:
 
 - αναγνωρίζεις το **είδος** μιας μεταβλητής (ποιοτική/ποσοτική, binary/nominal/ordinal, discrete/continuous)
-- επιλέγεις **σωστή περιγραφή** (πίνακες, μέτρα θέσης/διασποράς) και **σωστή οπτικοποίηση** (barplot, histogram, boxplot)
+- επιλέγεις τη **σωστή οπτικοποίηση** (barplot, histogram, boxplot) για κάθε είδος μεταβλητής
 - καταλαβαίνεις *γιατί* η λάθος αναπαράσταση οδηγεί σε λάθος συμπεράσματα
 
 ---
 
-## 0. Προετοιμασία: πακέτα
+## Προετοιμασία: πακέτα
+
+::: {.callout-note collapse="true"}
+### Τι κάνει αυτό το κομμάτι κώδικα;
+
+- Ελέγχει αν τα απαραίτητα πακέτα υπάρχουν στον υπολογιστή σας  
+- Εγκαθιστά **μόνο όσα λείπουν** (δεν τα ξανακατεβάζει κάθε φορά)
+- Φορτώνει τα πακέτα χωρίς ενοχλητικά μηνύματα
+- Θέτει seed για αναπαραγωγιμότητα αποτελεσμάτων (δηλαδή κάθε φορά που θα τρέχεται τον κω΄δικα θα "γεννά" τα ίδια δεδομένα 
+
+**Δεν χρειάζεται να τροποποιήσετε αυτόν τον κώδικα.**  Απλώς βεβαιωθείτε ότι εκτελείται χωρίς σφάλματα.
+:::
 
 ```{r setup, include=FALSE}
 options(timeout = 600)
 
 pkgs <- c("dplyr", "ggplot2", "tidyr", "tibble")
 to_install <- setdiff(pkgs, rownames(installed.packages()))
-if (length(to_install) > 0) install.packages(to_install, repos = "https://cloud.r-project.org")
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
 
-suppressPackageStartupMessages(invisible(lapply(pkgs, library, character.only = TRUE)))
+suppressPackageStartupMessages(
+  invisible(lapply(pkgs, library, character.only = TRUE))
+)
+
 set.seed(123)
 
 
