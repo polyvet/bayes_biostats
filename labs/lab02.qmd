@@ -161,7 +161,6 @@ set.seed(123)
 
 ---
 
-::: {.callout-note collapse="true"}
 ### Κώδικας δημιουργίας του dataset
 
 - Δημιουργεί 120 άτομα
@@ -212,13 +211,13 @@ df <- tibble::tibble(
 
 dplyr::glimpse(df)
 ```
-::: {.callout-note collapse="true"}
+
 
 ---
 
-3. Ποιοτικές μεταβλητές: σωστή περιγραφή & σωστή αναπαράσταση
+## 3. Ποιοτικές μεταβλητές: σωστή περιγραφή & σωστή αναπαράσταση
 
-3.1 Διχοτομική (binary): sex
+### 3.1 Διχοτομική (binary): sex
 
 Σωστή περιγραφή: συχνότητες και ποσοστά
 Σωστή οπτικοποίηση: bar plot (ή pie, αλλά bar είναι προτιμότερο)
@@ -235,13 +234,14 @@ ggplot(df, aes(x = sex)) +
   labs(title = "Φύλο (binary)", x = "Sex", y = "Count")
 ```
 
-⸻
+---
 
-3.2 Ονομαστική (nominal): blood_group
+### 3.2 Ονομαστική (nominal): blood_group
 
 Σωστή περιγραφή: συχνότητες/ποσοστά
 Σωστή οπτικοποίηση: bar plot
 
+```{r}
 tab_bg <- df |>
   dplyr::count(blood_group) |>
   dplyr::mutate(percent = 100 * n / sum(n)) |>
@@ -253,14 +253,16 @@ ggplot(df, aes(x = blood_group)) +
   geom_bar() +
   labs(title = "Ομάδα αίματος (nominal)", x = "Blood group", y = "Count")
 
+```
 
-⸻
+---
 
-3.3 Διατεταγμένη (ordinal): pain
+### 3.3 Διατεταγμένη (ordinal): pain
 
 Σωστή περιγραφή: συχνότητες/ποσοστά (και διατήρηση σειράς)
 Σωστή οπτικοποίηση: bar plot (με σωστή σειρά)
 
+```{r}
 tab_pain <- df |>
   dplyr::count(pain) |>
   dplyr::mutate(percent = 100 * n / sum(n))
@@ -271,30 +273,33 @@ ggplot(df, aes(x = pain)) +
   geom_bar() +
   labs(title = "Ένταση πόνου (ordinal)", x = "Pain severity", y = "Count")
 
+```
+
 ::: {.callout-warning}
 Συχνό λάθος: να αποθηκεύσεις ordinal ως character ή factor χωρίς ordered=TRUE.
 Τότε χάνεται η έννοια της σειράς.
 :::
 
-⸻
+---
 
-4. Ποσοτικές μεταβλητές: σωστή περιγραφή & σωστή αναπαράσταση
+## 4. Ποσοτικές μεταβλητές: σωστή περιγραφή & σωστή αναπαράσταση
 
-4.1 Διακριτή (discrete): hospital_visits
+### 4.1 Διακριτή (discrete): hospital_visits
 
 Σωστή περιγραφή: median/IQR (συχνά), ή mean/SD αν είναι περίπου συμμετρική
 Σωστή οπτικοποίηση: histogram / bar-like histogram (counts)
 
+```{r}
 summary(df$hospital_visits)
 
 ggplot(df, aes(x = hospital_visits)) +
   geom_histogram(bins = max(df$hospital_visits) - min(df$hospital_visits) + 1) +
   labs(title = "Επισκέψεις στο νοσοκομείο (discrete count)", x = "Number of visits", y = "Count")
+```
 
+---
 
-⸻
-
-4.2 Συνεχής (continuous): age
+### 4.2 Συνεχής (continuous): age
 
 Σωστή περιγραφή:
 	•	αν συμμετρική: mean ± SD
@@ -302,6 +307,7 @@ ggplot(df, aes(x = hospital_visits)) +
 
 Σωστή οπτικοποίηση: histogram, density, boxplot
 
+```{r}
 mean(df$age); sd(df$age)
 quantile(df$age, probs = c(0.25, 0.5, 0.75))
 
@@ -313,22 +319,24 @@ ggplot(df, aes(y = age)) +
   geom_boxplot() +
   labs(title = "Boxplot ηλικίας (continuous)", y = "Age (years)")
 
+```
 
-⸻
+---
 
-4.3 Συνεχής (continuous): systolic_bp
+### 4.3 Συνεχής (continuous): systolic_bp
 
+```{r}
 mean(df$systolic_bp); sd(df$systolic_bp)
 quantile(df$systolic_bp, probs = c(0.25, 0.5, 0.75))
 
 ggplot(df, aes(x = systolic_bp)) +
   geom_histogram(bins = 25) +
   labs(title = "Συστολική πίεση (continuous)", x = "Systolic BP (mmHg)", y = "Count")
+```
 
+---
 
-⸻
-
-5. “Ποια αναπαράσταση πάει με ποια μεταβλητή;” (πίνακας-κανόνας)
+## 5. “Ποια αναπαράσταση πάει με ποια μεταβλητή;” (πίνακας-κανόνας)
 
 Είδος μεταβλητής	Περιγραφή	Συνηθισμένα γραφήματα
 Binary (categorical)	n (%)	bar plot
@@ -338,11 +346,11 @@ Discrete (numeric)	median (IQR) ή mean (SD)	histogram
 Continuous (numeric)	mean (SD) ή median (IQR)	histogram, boxplot
 
 
-⸻
+---
 
-6. Ασκήσεις
+## 6. Ασκήσεις
 
-Άσκηση 1 — Ταξινόμησε τις μεταβλητές
+### Άσκηση 1 — Ταξινόμησε τις μεταβλητές
 
 Για καθεμία από τις μεταβλητές του df, γράψε:
 	•	ποιοτική/ποσοτική
@@ -352,12 +360,11 @@ Continuous (numeric)	mean (SD) ή median (IQR)	histogram, boxplot
 ::: {.callout-tip collapse=“true”}
 Hint: Οι sex, blood_group, pain είναι ποιοτικές. Οι hospital_visits, age, systolic_bp είναι ποσοτικές.
 :::
+---
 
-⸻
+### Άσκηση 2 — Φτιάξε μια νέα ordinal μεταβλητή
 
-Άσκηση 2 — Φτιάξε μια νέα ordinal μεταβλητή
-
-Δημιούργησε μια μεταβλητή risk_group με 3 επίπεδα: Low/Medium/High, ordered, με βάση τη συστολική πίεση:
+Δημιούργησε μια μεταβλητή risk_group με 3 επίπεδα: Low/Medium/High, ordered, με βάσει τη συστολική πίεση:
 	•	Low: < 120
 	•	Medium: 120–139
 	•	High: ≥ 140
@@ -366,45 +373,6 @@ Hint: Οι sex, blood_group, pain είναι ποιοτικές. Οι hospital_v
 	•	πίνακα συχνοτήτων
 	•	bar plot (με σωστή σειρά)
 
-df2 <- df |>
-  dplyr::mutate(
-    risk_group = dplyr::case_when(
-      systolic_bp < 120 ~ "Low",
-      systolic_bp < 140 ~ "Medium",
-      TRUE ~ "High"
-    ),
-    risk_group = factor(risk_group, levels = c("Low", "Medium", "High"), ordered = TRUE)
-  )
+---
 
-df2 |>
-  dplyr::count(risk_group) |>
-  dplyr::mutate(percent = 100 * n / sum(n))
-
-ggplot(df2, aes(x = risk_group)) +
-  geom_bar() +
-  labs(title = "Risk group (ordinal)", x = "Risk group", y = "Count")
-
-
-⸻
-
-Άσκηση 3 — Τι πάει λάθος αν κάνω “λάθος τύπο”;
-
-Δοκίμασε να μετατρέψεις τη pain σε character και δες τι αλλάζει.
-
-df_bad <- df |>
-  dplyr::mutate(pain_bad = as.character(pain))
-
-class(df$pain)
-class(df_bad$pain_bad)
-
-::: {.callout-note}
-Γράψε 2 προτάσεις: τι χάσαμε όταν έγινε character; γιατί αυτό είναι πρόβλημα;
-:::
-
-⸻
-
-7. Τι κρατάμε (take-home)
-	1.	Πρώτο βήμα σε κάθε ανάλυση: αναγνώριση τύπου μεταβλητής.
-	2.	Η σωστή περιγραφή/οπτικοποίηση εξαρτάται από το είδος της μεταβλητής.
-	3.	Αν αποθηκεύσεις ordinal χωρίς σειρά, χάνεις πληροφορία.
 
