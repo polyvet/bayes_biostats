@@ -8,7 +8,7 @@ format:
     code-fold: show
     code-tools: true
     theme: cosmo
-    html-math-method: katex
+    html-math-method: mathjax
 execute:
   warning: false
   message: false
