@@ -1,40 +1,36 @@
 ---
-title: "Lab 1 – Είδη Μεταβλητών & Σωστή Αναπαράσταση (R)"
+title: "Lab 1 – Δεσμευμένη Πιθανότητα, Κανόνας του Bayes & PPV/NPV"
+author: "Πολυχρόνης Κωστούλας"
 format:
   html:
     toc: true
-    code-fold: true
+    toc-depth: 3
+    code-fold: show
     code-tools: true
+    theme: cosmo
 execute:
   warning: false
   message: false
 ---
 
-## Στόχοι
-Με το τέλος του εργαστηρίου θα μπορείς να:
+## 1. Στόχοι Εργαστηρίου
+Με την ολοκλήρωση αυτού του εργαστηρίου, θα είστε σε θέση να:
 
-- αναγνωρίζεις το **είδος** μιας μεταβλητής (ποιοτική/ποσοτική, binary/nominal/ordinal, discrete/continuous)
-- επιλέγεις τη **σωστή οπτικοποίηση** (barplot, histogram, boxplot) για κάθε είδος μεταβλητής
-- καταλαβαίνεις *γιατί* η λάθος αναπαράσταση οδηγεί σε λάθος συμπεράσματα
+* εξηγείτε τι είναι **δεσμευμένη πιθανότητα** (conditional probability)
+* εφαρμόζετε τον **Κανόνα του Bayes** κυρίως σε διαγνωστικά τεστ
+* διακρίνετε **Ευαισθησία/Ειδικότητα** από **PPV/NPV**
+* κατανοείτε πώς ο **επιπολασμός (pre-test probability / prevalence)** επηρεάζει την αξιοπιστία ενός θετικού/αρνητικού αποτελέσματος
 
 ---
 
-## Προετοιμασία: πακέτα
-
-
-### Τι κάνει αυτό το κομμάτι κώδικα;
-
-- Ελέγχει αν τα απαραίτητα πακέτα υπάρχουν στον υπολογιστή σας  
-- Εγκαθιστά **μόνο όσα λείπουν** (δεν τα ξανακατεβάζει κάθε φορά)
-- Φορτώνει τα πακέτα χωρίς ενοχλητικά μηνύματα
-- Θέτει seed για αναπαραγωγιμότητα αποτελεσμάτων (δηλαδή κάθε φορά που θα τρέχεται τον κω΄δικα θα "γεννά" τα ίδια δεδομένα 
-
-**Δεν χρειάζεται να τροποποιήσετε αυτόν τον κώδικα.**  Απλώς βεβαιωθείτε ότι εκτελείται χωρίς σφάλματα.
+## 2. Προετοιμασία: Πακέτα και Ρυθμίσεις
 
 ```{r setup}
+#| label: setup
 options(timeout = 600)
 
-pkgs <- c("dplyr", "ggplot2", "tidyr", "tibble")
+pkgs <- c("dplyr", "ggplot2", "tidyr", "tibble", "scales")
+
 to_install <- setdiff(pkgs, rownames(installed.packages()))
 if (length(to_install) > 0) {
   install.packages(to_install, repos = "https://cloud.r-project.org")
@@ -44,338 +40,230 @@ suppressPackageStartupMessages(
   invisible(lapply(pkgs, library, character.only = TRUE))
 )
 
-set.seed(123)
+theme_set(theme_minimal(base_size = 14))
 ```
+---
 
-## 1. Γρήγορη υπενθύμιση: τι είναι «είδος μεταβλητής»;
+## 3. Δεσμευμένη πιθανότητα (Conditional probability)
 
-Το είδος μιας μεταβλητής καθορίζει:
-- πώς την περιγράφουμε,
-- πώς την απεικονίζουμε,
-- και ποια στατιστικά μέτρα ή αναλύσεις επιτρέπονται.
+Στη διάγνωση μάς ενδιαφέρουν πιθανότητες υπό συνθήκη.
+
+	•	(D): “το άτομο έχει τη νόσο”
+	•	(\bar D): “το άτομο δεν έχει τη νόσο”
+	•	(T^+): “το τεστ είναι θετικό”
+	•	(T^-): “το τεστ είναι αρνητικό”
+
+Δεσμευμένη πιθανότητα:
+[
+P(D \mid T^+) = \frac{P(D \cap T^+)}{P(T^+)}
+]
+
+Δηλαδή: “πιθανότητα νόσου δεδομένου ότι το τεστ βγήκε θετικό”.
 
 ---
 
-### 1.1 Ποιοτικές μεταβλητές (Categorical variables)
+## 4. Παράμετροι τεστ: Se/Sp και τι σημαίνουν
 
-Οι ποιοτικές μεταβλητές περιγράφουν **κατηγορίες** και όχι αριθμητικά μεγέθη.
+Δείκτες της αξιοπιστίας μιας διαγνωστικής δοκιμής είναι:
 
-#### 1.1.1 Διχοτομικές (Binary / Dichotomous)
-- Έχουν **ακριβώς δύο** κατηγορίες  
-- Παραδείγματα:
-  - Ναι / Όχι
-  - Άνδρας / Γυναίκα
-  - Ασθενής / Μη ασθενής
+	•	Η Ευαισθησία (Sensitivity, Se):
+[
+Se = P(T^+ \mid D)
+]
+	•	Η Ειδικότητα (Specificity, Sp):
+[
+Sp = P(T^- \mid \bar D)
+]
 
-**Συνήθης αναπαράσταση:** πίνακας συχνοτήτων, bar plot
+Αυτές είναι πιθανότητες προϋποθέτουν τη γνώση της κατάστασης νόσου. Όμως στην πράξη συχνά ρωτάμε το αντίστροφο:
 
----
+	•	PPV: (P(D \mid T^+))
+	•	NPV: (P(\bar D \mid T^-))
 
-#### 1.1.2 Ονομαστικές (Nominal)
-- Έχουν **περισσότερες από δύο** κατηγορίες
-- **Δεν υπάρχει φυσική σειρά** μεταξύ τους  
-- Παραδείγματα:
-  - Ομάδα αίματος (A, B, AB, O)
-  - Τόπος κατοικίας
-  - Τύπος θεραπείας
-
-**Συνήθης αναπαράσταση:** πίνακας συχνοτήτων, bar plot
+Δηλαδή, στην κλινική πράξη, κάνουμε το τεστ για να δούμε αν το άτομο νοσεί ή όχι. 
 
 ---
 
-#### 1.1.3 Διατεταγμένες (Ordinal)
-- Έχουν κατηγορίες με **ουσιαστική σειρά**
-- Οι αποστάσεις μεταξύ κατηγοριών **δεν είναι αριθμητικά ορισμένες**
-- Παραδείγματα:
-  - Ήπιος / Μέτριος / Σοβαρός πόνος
-  - Στάδιο νόσου I – II – III – IV
-  - Κλίμακες Likert (π.χ. 1–5)
+## 5. Κανόνας του Bayes
 
-**Συνήθης αναπαράσταση:** πίνακας συχνοτήτων, bar plot με σωστή σειρά
+Ο Κανόνας του Bayes συνδέει τα παραπάνω:
 
----
+[
+P(D \mid T^+) = \frac{P(T^+ \mid D),P(D)}{P(T^+)}
+]
 
-### 1.2 Ποσοτικές μεταβλητές (Numeric variables)
+Όπου:
 
-Οι ποσοτικές μεταβλητές παίρνουν **αριθμητικές τιμές** και επιτρέπουν αριθμητικούς υπολογισμούς.
+	•	(P(D)) είναι η pre-test probability (σε πληθυσμιακό επίπεδο: ο επιπολασμός)
+	•	(P(T^+ \mid D)) είναι η ευαισθησία
+	•	(P(T^+)) είναι η συνολική πιθανότητα να βγει θετικό το τεστ:
 
-#### 1.2.1 Διακριτές (Discrete)
-- Παίρνουν **ακέραιες τιμές**
-- Προκύπτουν από **μέτρηση πλήθους**
-- Παραδείγματα:
-  - Αριθμός επισκέψεων στο νοσοκομείο
-  - Αριθμός επεισοδίων
-  - Αριθμός παιδιών
-
-**Συνήθης αναπαράσταση:** histogram (με ακέραια bins), bar plot
+[
+P(T^+) = P(T^+ \mid D)P(D) + P(T^+ \mid \bar D)P(\bar D)
+]
+και (P(T^+ \mid \bar D)=1-Sp).
 
 ---
 
-#### 1.2.2 Συνεχείς (Continuous)
-- Παίρνουν τιμές σε **συνεχή κλίμακα**
-- Θεωρητικά μπορούν να πάρουν άπειρες τιμές σε ένα διάστημα
-- Παραδείγματα:
-  - Ηλικία
-  - Ύψος
-  - Αρτηριακή πίεση
-  - Βάρος
+## 6. Από τον Bayes σε PPV και NPV (τύποι)
 
-**Συνήθης αναπαράσταση:** histogram, density plot, boxplot
 
----
+6.1 PPV
 
-::: {.callout-note}
-🔑 **Κανόνας εργαστηρίου:**  
-Πριν κάνεις οποιονδήποτε υπολογισμό ή γράφημα, **αναγνώρισε πρώτα το είδος της μεταβλητής**.
+[
+PPV = P(D \mid T^+) = \frac{Se \cdot Prev}{Se \cdot Prev + (1-Sp)\cdot(1-Prev)}
+]
+
+6.2 NPV
+
+[
+NPV = P(\bar D \mid T^-) = \frac{Sp \cdot (1-Prev)}{Sp \cdot (1-Prev) + (1-Se)\cdot Prev}
+]
+
+
+::: {.callout-tip}
+🎥 [Bίντεο επεξήγησης:](https://youtu.be/hLiL24vL3rg)
 :::
 
 ---
 
-## 2. Θα φτιάξουμε δικά μας δεδομένα  
-*(ένα μικρό «κλινικό» dataset για εξάσκηση)*
+## 7. Υπολογισμοί στην R (καθαρά και επαναχρησιμοποιήσιμα)
 
-Σε αυτό το εργαστήριο **δεν χρησιμοποιούμε πραγματικά δεδομένα ασθενών**.  
-Αντίθετα, δημιουργούμε ένα **τεχνητό (simulated) dataset** που μοιάζει με κλινικό,
-ώστε να μπορούμε:
+Θα φτιάξουμε μία μικρή συνάρτηση ώστε να υπολογίζουμε PPV/NPV χωρίς να ξαναγράφουμε τύπους.
 
-- να ελέγξουμε **όλα τα είδη μεταβλητών**,
-- να ξέρουμε *ακριβώς* τι αντιπροσωπεύει κάθε στήλη,
-- να επικεντρωθούμε στη **σωστή αναπαράσταση** και όχι στα ίδια τα δεδομένα.
+#| label: functions
 
-👉 **Κάθε γραμμή του dataset αντιστοιχεί σε ένα άτομο (ασθενή).**
+check_probs <- function(prev, se, sp) {
+  ok <- all(prev >= 0, prev <= 1, se >= 0, se <= 1, sp >= 0, sp <= 1)
+  if (!ok) stop("Όλες οι πιθανότητες πρέπει να είναι στο [0,1].")
+}
 
----
+ppv_npv <- function(prev, se, sp) {
+  check_probs(prev, se, sp)
+  ppv <- (se * prev) / ((se * prev) + ((1 - sp) * (1 - prev)))
+  npv <- (sp * (1 - prev)) / ((sp * (1 - prev)) + ((1 - se) * prev))
+  tibble(prev = prev, se = se, sp = sp, ppv = ppv, npv = npv)
+}
 
-### Τι μεταβλητές θα περιέχει το dataset
-
-Το dataset θα περιλαμβάνει:
-
-- **Ποιοτικές μεταβλητές**
-  - `sex`: διχοτομική (binary)
-  - `blood_group`: ονομαστική (nominal)
-  - `pain`: διατεταγμένη (ordinal)
-- **Ποσοτικές μεταβλητές**
-  - `hospital_visits`: διακριτή (discrete count)
-  - `age`: συνεχής (continuous)
-  - `systolic_bp`: συνεχής (continuous)
 
 ---
 
-### Κώδικας δημιουργίας του dataset
+8. Παράδειγμα: σπάνια νόσος
 
-- Δημιουργεί 120 άτομα
-- Ορίζει σωστά τους τύπους των μεταβλητών (`factor`, `ordered`, numeric)
-- Κρατά ρεαλιστικές τιμές (π.χ. ηλικία ≥ 18)
+Έστω:
+	•	Επιπολασμός (Prev) = 1%
+	•	Ευαισθησία (Se) = 95%
+	•	Ειδικότητα (Sp) = 90%
 
-```{r}
-n <- 120
+#| label: example-calc
 
-df <- tibble::tibble(
-  id = 1:n,
-  
-  # Ποιοτική - διχοτομική (binary)
-  sex = factor(
-    sample(c("Female", "Male"), n, replace = TRUE),
-    levels = c("Female", "Male")
-  ),
-  
-  # Ποιοτική - ονομαστική (nominal)
-  blood_group = factor(
-    sample(c("A", "B", "AB", "O"), n, replace = TRUE),
-    levels = c("A", "B", "AB", "O")
-  ),
-  
-  # Ποιοτική - διατεταγμένη (ordinal)
-  pain = factor(
-    sample(
-      c("Mild", "Moderate", "Severe"),
-      n,
-      replace = TRUE,
-      prob = c(0.45, 0.35, 0.20)
-    ),
-    levels = c("Mild", "Moderate", "Severe"),
-    ordered = TRUE
-  ),
-  
-  # Ποσοτική - διακριτή (counts)
-  hospital_visits = rpois(n, lambda = 2),
-  
-  # Ποσοτικές - συνεχείς
-  age = round(rnorm(n, mean = 42, sd = 14), 1),
-  systolic_bp = round(rnorm(n, mean = 125, sd = 15), 0)
-) |>
-  dplyr::mutate(
-    age = pmax(age, 18),                  # ελάχιστη ηλικία 18
-    systolic_bp = pmax(systolic_bp, 80)   # ρεαλιστικά όρια πίεσης
+prevalence  <- 0.01
+sensitivity <- 0.95
+specificity <- 0.90
+
+res <- ppv_npv(prevalence, sensitivity, specificity)
+
+res %>%
+  mutate(
+    prev = scales::percent(prev),
+    ppv  = scales::percent(ppv, accuracy = 0.01),
+    npv  = scales::percent(npv, accuracy = 0.01)
   )
 
-dplyr::glimpse(df)
-```
-
-
----
-
-## 3. Ποιοτικές μεταβλητές: σωστή περιγραφή & σωστή αναπαράσταση
-
-### 3.1 Διχοτομική (binary): sex
-
-Σωστή περιγραφή: συχνότητες και ποσοστά
-Σωστή οπτικοποίηση: bar plot (ή pie, αλλά bar είναι προτιμότερο)
-
-```{r}
-tab_sex <- df |>
-  dplyr::count(sex) |>
-  dplyr::mutate(percent = 100 * n / sum(n))
-
-tab_sex
-
-ggplot(df, aes(x = sex)) +
-  geom_bar() +
-  labs(title = "Φύλο (binary)", x = "Sex", y = "Count")
-```
-
----
-
-### 3.2 Ονομαστική (nominal): blood_group
-
-Σωστή περιγραφή: συχνότητες/ποσοστά
-Σωστή οπτικοποίηση: bar plot
-
-```{r}
-tab_bg <- df |>
-  dplyr::count(blood_group) |>
-  dplyr::mutate(percent = 100 * n / sum(n)) |>
-  dplyr::arrange(desc(n))
-
-tab_bg
-
-ggplot(df, aes(x = blood_group)) +
-  geom_bar() +
-  labs(title = "Ομάδα αίματος (nominal)", x = "Blood group", y = "Count")
-
-```
-
----
-
-### 3.3 Διατεταγμένη (ordinal): pain
-
-Σωστή περιγραφή: συχνότητες/ποσοστά (και διατήρηση σειράς)
-Σωστή οπτικοποίηση: bar plot (με σωστή σειρά)
-
-```{r}
-tab_pain <- df |>
-  dplyr::count(pain) |>
-  dplyr::mutate(percent = 100 * n / sum(n))
-
-tab_pain
-
-ggplot(df, aes(x = pain)) +
-  geom_bar() +
-  labs(title = "Ένταση πόνου (ordinal)", x = "Pain severity", y = "Count")
-
-```
-
-::: {.callout-warning}
-Συχνό λάθος: να αποθηκεύσεις ordinal ως character ή factor χωρίς ordered=TRUE.
-Τότε χάνεται η έννοια της σειράς.
+::: {.callout-note}
+Ερμηνεία:
+Σε σπάνια νόσο, ακόμη και “καλό” τεστ μπορεί να έχει χαμηλή PPV (πολλοί ψευδώς θετικοί από το μεγάλο ποσοστό υγιών).
+Αντίθετα, η NPV συχνά είναι πολύ υψηλή, γιατί οι περισσότεροι είναι όντως υγιείς.
 :::
 
 ---
 
-## 4. Ποσοτικές μεταβλητές: σωστή περιγραφή & σωστή αναπαράσταση
+## 9. Προσομοίωση: πώς αλλάζουν PPV/NPV όταν αλλάζει ο επιπολασμός
 
-### 4.1 Διακριτή (discrete): hospital_visits
+Θα κρατήσουμε Se/Sp σταθερά και θα δούμε τι γίνεται όταν το τεστ μπαίνει σε διαφορετικούς πληθυσμούς (χαμηλού/υψηλού κινδύνου).
 
-Σωστή περιγραφή: median/IQR (συχνά), ή mean/SD αν είναι περίπου συμμετρική
-Σωστή οπτικοποίηση: histogram / bar-like histogram (counts)
+#| label: simulation-data
 
-```{r}
-summary(df$hospital_visits)
+sim_data <- tibble(
+  prev = seq(0.001, 0.5, length.out = 200),
+  se = 0.95,
+  sp = 0.90
+) %>%
+  mutate(
+    ppv = (se * prev) / ((se * prev) + (1 - sp) * (1 - prev)),
+    npv = (sp * (1 - prev)) / ((sp * (1 - prev)) + (1 - se) * prev)
+  )
 
-ggplot(df, aes(x = hospital_visits)) +
-  geom_histogram(bins = max(df$hospital_visits) - min(df$hospital_visits) + 1) +
-  labs(title = "Επισκέψεις στο νοσοκομείο (discrete count)", x = "Number of visits", y = "Count")
-```
+### 9.1 Γράφημα: Επιπολασμός vs PPV
 
----
+#| label: plot-ppv
+#| fig-cap: "Σχέση Επιπολασμού και PPV (Se=95%, Sp=90%)"
 
-### 4.2 Συνεχής (continuous): age
+ggplot(sim_data, aes(x = prev, y = ppv)) +
+  geom_line(size = 1.1) +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Πώς ο επιπολασμός καθορίζει την PPV",
+    x = "Επιπολασμός (Pre-test probability / Prior)",
+    y = "PPV = P(D | T+)"
+  )
 
-Σωστή περιγραφή:
-	•	αν συμμετρική: mean ± SD
-	•	αν ασύμμετρη: median (IQR)
+### 9.2 Γράφημα: Επιπολασμός vs NPV
 
-Σωστή οπτικοποίηση: histogram, density, boxplot
+#| label: plot-npv
+#| fig-cap: "Σχέση Επιπολασμού και NPV (Se=95%, Sp=90%)"
 
-```{r}
-mean(df$age); sd(df$age)
-quantile(df$age, probs = c(0.25, 0.5, 0.75))
+ggplot(sim_data, aes(x = prev, y = npv)) +
+  geom_line(size = 1.1) +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Πώς ο επιπολασμός καθορίζει την NPV",
+    x = "Επιπολασμός (Pre-test probability / Prior)",
+    y = "NPV = P(¬D | T-)"
+  )
 
-ggplot(df, aes(x = age)) +
-  geom_histogram(bins = 25) +
-  labs(title = "Ηλικία (continuous)", x = "Age (years)", y = "Count")
-
-ggplot(df, aes(y = age)) +
-  geom_boxplot() +
-  labs(title = "Boxplot ηλικίας (continuous)", y = "Age (years)")
-
-```
-
----
-
-### 4.3 Συνεχής (continuous): systolic_bp
-
-```{r}
-mean(df$systolic_bp); sd(df$systolic_bp)
-quantile(df$systolic_bp, probs = c(0.25, 0.5, 0.75))
-
-ggplot(df, aes(x = systolic_bp)) +
-  geom_histogram(bins = 25) +
-  labs(title = "Συστολική πίεση (continuous)", x = "Systolic BP (mmHg)", y = "Count")
-```
 
 ---
 
-## 5. «Ποια αναπαράσταση πάει με ποια μεταβλητή;»  
+## 10. Ασκήσεις Εργαστηρίου
 
-| Είδος μεταβλητής | Περιγραφή | Συνηθισμένα γραφήματα |
-|---|---|---|
-| Binary (categorical) | n (%) | Bar plot |
-| Nominal (categorical) | n (%) | Bar plot |
-| Ordinal (categorical) | n (%) (με σωστή σειρά) | Bar plot (με σειρά) |
-| Discrete (numeric) | Median (IQR) ή Mean (SD) | Histogram |
-| Continuous (numeric) | Mean (SD) ή Median (IQR) | Histogram, Boxplot |
+Άσκηση 1 — Η δύναμη της ειδικότητας σε σπάνια νόσο
 
----
+### Στο σενάριο Prev=1%, Se=95%:
+	1.	Αλλάξτε την ειδικότητα από 90% σε 99% και υπολογίστε το νέο PPV και NPV.
+	2.	Εξηγήστε με 2–3 προτάσεις γιατί η ειδικότητα “μετράει” τόσο πολύ όταν η νόσος είναι σπάνια.
 
-## 6. Ασκήσεις
+#| label: exercise-1
+ppv_npv(prev = 0.01, se = 0.95, sp = 0.99)
 
-### Άσκηση 1 — Ταξινόμησε τις μεταβλητές
+### Άσκηση 2 — Ομάδα χαμηλού vs υψηλού κινδύνου
 
-Για καθεμία από τις μεταβλητές του df, γράψε:
+Ένα τεστ με Se=90% και Sp=90% εφαρμόζεται σε δύο πληθυσμούς:
+	•	Α: Prev = 0.5%
+	•	Β: Prev = 15%
 
-	•	ποιοτική/ποσοτική
-	•	υποτύπο (binary/nominal/ordinal ή discrete/continuous)
-	•	1 “σωστή” περιγραφή + 1 “σωστό” plot
+Υπολογίστε PPV και NPV και για τους δύο.
 
-::: {.callout-tip collapse=“true”}
-Hint: Οι sex, blood_group, pain είναι ποιοτικές. Οι hospital_visits, age, systolic_bp είναι ποσοτικές.
-:::
----
+#| label: exercise-2
+bind_rows(
+  ppv_npv(prev = 0.005, se = 0.90, sp = 0.90) %>% mutate(group = "A (Prev 0.5%)"),
+  ppv_npv(prev = 0.15,  se = 0.90, sp = 0.90) %>% mutate(group = "B (Prev 15%)")
+) %>%
+  select(group, prev, se, sp, ppv, npv) %>%
+  mutate(across(c(prev, se, sp, ppv, npv), ~scales::percent(.x, accuracy = 0.01)))
 
-### Άσκηση 2 — Φτιάξε μια νέα ordinal μεταβλητή
-
-Δημιούργησε μια μεταβλητή risk_group με 3 επίπεδα: Low/Medium/High, ordered, με βάσει τη συστολική πίεση:
-
-	•	Low: < 120
-	•	Medium: 120–139
-	•	High: ≥ 140
-
-Μετά κάνε:
-
-	•	πίνακα συχνοτήτων
-	•	bar plot (με σωστή σειρά)
 
 ---
 
+## 11. Σύνοψη
+
+	•	Η δεσμευμένη πιθανότητα είναι το “κλειδί” για το τι μας ενδιαφέρει στη διάγνωση.
+	•	Ο Κανόνας του Bayes συνδυάζει:
+	•	αυτό που ξέραμε πριν (pre-test probability / prior)
+	•	με την πληροφορία του τεστ (Se/Sp)
+	•	Οι PPV/NPV αλλάζουν δραματικά με τον επιπολασμό.
+
+👉 Επόμενο εργαστήριο: Θα δούμε πώς περνάμε από “μία τιμή” prior σε κατανομή prior (π.χ. Beta), ώστε να εκφράζουμε αβεβαιότητα.
 
