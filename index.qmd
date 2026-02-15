@@ -91,7 +91,11 @@ title: "Μπεϋζιανή Βιοστατιστική – Εργαστήρια"
 Ανοίξτε το RStudio και τρέξτε την παρακάτω εντολή στην κονσόλα για να εγκαταστήσετε τα απαραίτητα πακέτα:
 
 ```r
-install.packages(c("R2jags", "runjags", "coda", "rjags", "lattice"))
+install.packages(c(
+  "tidyverse", "ggplot2",
+  "R2jags", "runjags", "rjags", "coda", "lattice",
+  "bayesplot"
+))
 ```
 
 ---
