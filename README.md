@@ -1,1 +1,1 @@
-# biostats_lab
+# Bayesian biostatistics laboratory
