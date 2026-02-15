@@ -18,4 +18,4 @@ format:
     theme: cosmo
     toc: true
     code-fold: true
-    html-math-method: katex
+    html-math-method: mathjax
