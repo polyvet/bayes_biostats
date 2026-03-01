@@ -1,0 +1,525 @@
+---
+title: "Lab 2 – Από τον Κανόνα του Bayes στη Μπεϋζιανή Εκτίμηση"
+author: "Πολυχρόνης Κωστούλας"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: show
+    code-tools: true
+    theme: cosmo
+execute:
+  warning: false
+  message: false
+---
+
+
+## 1. Στόχοι Εργαστηρίου
+
+Με την ολοκλήρωση του εργαστηρίου θα μπορείτε να:
+
+ - κατανοείτε τη μετάβαση από Bayes’ theorem σε Μπεϋζιανή εκτίμηση
+ - ορίζετε likelihood για διωνυμικά δεδομένα
+ - χρησιμοποιείτε την Beta κατανομή ως prior
+ - υπολογίζετε posterior κατανομή
+ - εξάγετε posterior mean και credible intervals
+ - συγκρίνετε weak και informative priors
+
+___
+
+
+## 2. Προετοιμασία
+
+```{r}
+options(timeout = 600)
+
+pkgs <- c("ggplot2", "dplyr", "tibble", "scales")
+
+to_install <- setdiff(pkgs, rownames(installed.packages()))
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+
+suppressPackageStartupMessages(
+  invisible(lapply(pkgs, library, character.only = TRUE))
+)
+
+theme_set(theme_minimal(base_size = 14))
+```
+
+---
+
+## 3. Από τον Κανόνα του Bayes στη Bayesian Στατιστική
+
+Στο Lab 1 χρησιμοποιήσαμε:
+
+$$ P(A \mid B) = \frac{P(B \mid A)\, P(A)}{P(B)} $$
+
+Στη Μπεϋζιανή στατιστική ο Κανόνας του Bayes εφαρμόζεται σε παραμέτρους:
+
+$$ p(\theta \mid y) = \frac{p(y \mid \theta)\, p(\theta)}{p(y)} $$
+
+Όπου:
+
+- $\theta$ = άγνωστη παράμετρος  
+- $p(\theta)$ = prior κατανομή  
+- $p(y \mid \theta)$ = likelihood  
+- $p(\theta \mid y)$ = posterior κατανομή  
+- $p(y)$ = marginal likelihood (κανονικοποιητικός όρος)
+
+---
+
+## 4. Το Στατιστικό Πρόβλημα
+
+Θέλουμε να εκτιμήσουμε την άγνωστη παράμετρο:
+
+$$
+\theta = \text{prevalence}
+$$
+
+Παρατηρούμε δεδομένα:
+
+$$
+X \sim \text{Binomial}(n, \theta)
+$$
+
+δηλαδή:
+
+$$
+P(X = x \mid \theta) =
+\binom{n}{x} \theta^x (1-\theta)^{n-x}
+$$
+
+### Likelihood
+
+Η likelihood ως συνάρτηση της $\theta$ είναι:
+
+$$
+L(\theta \mid x) \propto \theta^x (1-\theta)^{n-x}
+$$
+
+(αγνοούμε τον όρο $\binom{n}{x}$ επειδή δεν εξαρτάται από την $\theta$)
+___
+
+
+## 5. Η Beta Κατανομή
+
+Ορίζουμε prior για την άγνωστη παράμετρο:
+
+$$
+\theta \sim \text{Beta}(\alpha, \beta)
+$$
+
+Η πυκνότητα της Beta κατανομής είναι:
+
+$$
+p(\theta) =
+\frac{\Gamma(\alpha+\beta)}
+{\Gamma(\alpha)\Gamma(\beta)}
+\theta^{\alpha-1}(1-\theta)^{\beta-1},
+\quad 0 < \theta < 1
+$$
+
+### Ιδιότητες
+
+- Μέση τιμή:
+
+$$
+E(\theta) = \frac{\alpha}{\alpha+\beta}
+$$
+
+- Διακύμανση:
+
+$$
+\text{Var}(\theta) =
+\frac{\alpha \beta}
+{(\alpha+\beta)^2(\alpha+\beta+1)}
+$$
+
+- Effective sample size (ισχύς prior):
+
+$$
+\alpha + \beta
+$$
+
+___
+
+## 5.1 Μορφές Beta Κατανομής
+
+```{r}
+curve(dbeta(x,1,1), from=0, to=1, col="black", lwd=2,
+      ylab="Density", main="Διαφορετικά Priors")
+
+curve(dbeta(x,2,2), from=0, to=1, col="blue", lwd=2, add=TRUE)
+curve(dbeta(x,10,90), from=0, to=1, col="red", lwd=2, add=TRUE)
+curve(dbeta(x,0.5,0.5), from=0, to=1, col="green", lwd=2, add=TRUE)
+
+legend("topright",
+       legend=c("Beta(1,1)","Beta(2,2)","Beta(10,90)","Beta(0.5,0.5)"),
+       col=c("black","blue","red","green"),
+       lwd=2)
+```
+
+---
+
+
+## 6. Μαθηματική Παραγωγή Posterior
+
+Ξεκινάμε από τον Κανόνα του Bayes:
+
+$$
+p(\theta \mid x) \propto p(x \mid \theta)\, p(\theta)
+$$
+
+Αντικαθιστούμε τη Binomial likelihood και την Beta prior:
+
+$$
+p(\theta \mid x)
+\propto
+\theta^x (1-\theta)^{n-x}
+\times
+\theta^{\alpha-1}(1-\theta)^{\beta-1}
+$$
+
+Ομαδοποιούμε τους εκθέτες:
+
+$$
+p(\theta \mid x)
+\propto
+\theta^{x+\alpha-1}
+(1-\theta)^{n-x+\beta-1}
+$$
+
+Η παραπάνω μορφή είναι ακριβώς η πυκνότητα μιας Beta κατανομής.
+
+Άρα:
+
+$$
+\theta \mid x \sim \text{Beta}(\alpha + x,\; \beta + n - x)
+$$
+
+::: {.callout-note}
+Η Beta είναι **conjugate prior** της Binomial, επειδή η posterior ανήκει στην ίδια οικογένεια κατανομών με την prior.
+:::
+
+---
+
+## 7. Παράδειγμα: Εκτίμηση Επιπολασμού Φυματίωσης (TB)
+
+Έστω ότι θέλουμε να εκτιμήσουμε τον επιπολασμό της φυματίωσης σε νοσηλευόμενους άνδρες. Παρατηρούμε: $n = 1000$ άτομα συνολικά, από τα οποία $x = 5$ είναι θετικά.
+
+Άρα:
+
+$$
+X \sim \text{Binomial}(n=1000, \theta)
+$$
+
+όπου $\theta$ είναι ο άγνωστος επιπολασμός.
+---
+
+## 7.1 Non-informative prior
+
+Επιλέγουμε non-informative prior:
+
+$$
+\theta \sim \text{Beta}(1,1)
+$$
+
+Η κατανομή $\text{Beta}(1,1)$ είναι ομοιόμορφη στο $(0,1)$ και εκφράζει πλήρη άγνοια για την τιμή της $\theta$.
+
+
+```{r}
+
+#| label: posterior-noninf
+
+alpha_prior <- 1
+beta_prior  <- 1
+
+x <- 5
+n <- 1000
+
+alpha_post <- alpha_prior + x
+beta_post  <- beta_prior + (n - x)
+
+alpha_post
+beta_post
+```
+
+Άρα:
+
+$$
+\theta \mid x \sim \text{Beta}(6, 996)
+$$
+
+
+
+Η posterior μέση τιμή είναι:
+
+$$
+E(\theta \mid x) =
+\frac{6}{6+996} \approx 0.00599
+$$
+
+Παρατηρούμε ότι είναι ελαφρώς μεγαλύτερη από την κλασική εκτίμηση $\hat{\theta} = 0.005$, λόγω της επίδρασης του prior.
+
+```{r}
+post_mean <- alpha_post / (alpha_post + beta_post)
+post_mean
+```
+
+---
+
+## 7.2 Informative prior
+
+Ας υποθέσουμε ότι από ιστορικά δεδομένα γνωρίζουμε ότι ο επιπολασμός της TB είναι περίπου 0.1%. Επιλέγουμε λοιπόν ένα πληροφοριακό prior:
+
+$$
+\theta \sim \text{Beta}(2, 920)
+$$
+
+Η μέση τιμή του prior είναι:
+
+$$
+E(\theta) = \frac{2}{2+920} \approx 0.00217
+$$
+
+Το effective sample size είναι:
+
+$$
+2 + 920 = 922
+$$
+
+δηλαδή το prior "ισοδυναμεί" περίπου με 922 "προηγούμενες παρατηρήσεις".
+
+```{r}
+#| label: posterior-informative
+
+alpha_prior2 <- 2
+beta_prior2  <- 920
+
+alpha_post2 <- alpha_prior2 + x
+beta_post2  <- beta_prior2 + (n - x)
+
+alpha_post2
+beta_post2
+```
+
+Άρα:
+
+$$
+\theta \mid x \sim \text{Beta}(7, 1915)
+$$
+
+```{r}
+post_mean2 <- alpha_post2 / (alpha_post2 + beta_post2)
+post_mean2
+```
+
+Παρατηρούμε ότι η posterior μέση τιμή είναι μικρότερη από αυτήν με το μη πληροφοριακό prior. Το ισχυρό prior "τραβάει" την εκτίμηση προς την αρχική του πεποίθηση.
+
+---
+
+## 8. Prior vs Posterior
+
+```{r}
+#| label: prior-vs-posterior
+#| fig-cap: "Σύγκριση Prior και Posterior για τον επιπολασμό θ"
+
+theta_hat <- x / n  # MLE
+
+# Προαιρετικά: y-limits ώστε να χωράνε και οι δύο καμπύλες
+ymax <- max(
+  dbeta(seq(0, 0.02, length.out = 2000), alpha_prior, beta_prior),
+  dbeta(seq(0, 0.02, length.out = 2000), alpha_post,  beta_post)
+)
+
+curve(
+  dbeta(t, alpha_prior, beta_prior),
+  from = 0, to = 0.02,
+  col = "blue", lwd = 2,
+  xlab = expression(theta),
+  ylab = "Density",
+  ylim = c(0, ymax * 1.05),
+  main = "Prior vs Posterior"
+)
+
+curve(
+  dbeta(t, alpha_post, beta_post),
+  from = 0, to = 0.02,
+  col = "red", lwd = 2,
+  add = TRUE
+)
+
+abline(v = theta_hat, lty = 2)  # MLE
+legend(
+  "topright",
+  legend = c("Prior", "Posterior", "MLE = x/n"),
+  col = c("blue", "red", "black"),
+  lwd = c(2, 2, 1),
+  lty = c(1, 1, 2),
+  bty = "n"
+)
+```
+
+## 9. Posterior Mean & 95% Credible Interval
+
+Η posterior μέση τιμή είναι:
+
+$$
+E(\theta \mid x) =
+\frac{\alpha + x}{\alpha + \beta + n}
+$$
+
+
+
+```{r}
+#| label: posterior-summary
+
+post_mean <- alpha_post / (alpha_post + beta_post)
+
+ci <- qbeta(c(0.025, 0.975), alpha_post, beta_post)
+
+tibble(
+  Posterior_mean = post_mean,
+  CI_lower = ci[1],
+  CI_upper = ci[2]
+)
+```
+
+Ερμηνεία:
+Το 95% credible interval σημαίνει ότι:
+
+Δεδομένων των παρατηρήσεων και του prior, υπάρχει 95% πιθανότητα η παράμετρος $\theta$ να βρίσκεται μέσα σε αυτό το διάστημα.
+---
+
+
+## 10. Sequential Updating
+
+Η Μπεϋζιανή εκτίμηση είναι δυναμική διαδικασία. Το posterior ενός βήματος μπορεί να χρησιμοποιηθεί ως prior στο επόμενο βήμα.
+
+```{r}
+#| label: sequential-update
+
+alpha_seq <- 1
+beta_seq  <- 1
+
+data_stream <- c(1,0,0,0,0,1,0,0,0,0)
+
+for(y in data_stream){
+  alpha_seq <- alpha_seq + y
+  beta_seq  <- beta_seq + (1 - y)
+}
+
+alpha_seq
+beta_seq
+```
+
+Τελικό posterior:
+
+$$
+\theta \mid x \sim \text{Beta}(\alpha_{\text{final}}, \beta_{\text{final}})
+$$
+
+Παρατηρούμε ότι:
+
+- κάθε επιτυχία αυξάνει το $\alpha$
+- κάθε αποτυχία αυξάνει το $\beta$
+
+Η γνώση συσσωρεύεται σταδιακά.
+
+---
+
+## 11. Σύγκριση Priors
+
+```{r}
+#| label: prior-comparison
+
+priors <- list(
+  c(1,1),
+  c(2,2),
+  c(10,90),
+  c(50,950)
+)
+
+results <- lapply(priors, function(p){
+  alpha0 <- p[1]
+  beta0  <- p[2]
+  
+  posterior_mean <- (alpha0 + x) / (alpha0 + beta0 + n)
+  prior_mean     <- alpha0 / (alpha0 + beta0)
+  ess            <- alpha0 + beta0
+  
+  tibble(
+    alpha_prior = alpha0,
+    beta_prior  = beta0,
+    prior_mean  = prior_mean,
+    prior_ESS   = ess,
+    posterior_mean = posterior_mean
+  )
+})
+
+results_df <- bind_rows(results)
+
+results_df
+```
+
+Παρατήρηση:
+
+- Όσο μεγαλύτερο είναι το $\alpha+\beta$ (effective sample size),
+  τόσο ισχυρότερο είναι το prior.
+- Ισχυρά priors μετακινούν την posterior προς την αρχική τους μέση τιμή.
+- Όταν το prior είναι ασθενές (μικρό ESS), τα δεδομένα κυριαρχούν.
+
+---
+
+## 12. Ασκήσεις
+
+### Άσκηση 1
+
+Με $n = 50$ και $x = 8$:
+
+1. Υπολογίστε την posterior κατανομή με prior $\text{Beta}(1,1)$.
+2. Υπολογίστε την posterior μέση τιμή.
+3. Υπολογίστε το 95% credible interval.
+
+
+---
+
+### Άσκηση 2
+
+Συγκρίνετε τα παρακάτω priors:
+
+- $\text{Beta}(1,1)$
+- $\text{Beta}(20,80)$
+
+Χρησιμοποιήστε τα ίδια δεδομένα ($n=50$, $x=8$).
+Ποιο prior επηρεάζει περισσότερο το posterior;  Εξηγήστε με βάση το effective sample size.
+
+---
+
+## 13. Σύνοψη
+
+- Η Μπεϋζιανή στατιστική εφαρμόζει τον Κανόνα του Bayes σε άγνωστες παραμέτρους.
+- Η παράμετρος $\theta$ αντιμετωπίζεται ως τυχαία μεταβλητή.
+- Η Beta είναι conjugate prior της Binomial.
+- Η posterior προκύπτει προσθέτοντας δεδομένα στο prior:
+  
+  $$
+  \text{Posterior} = \text{Prior} + \text{Data}
+  $$
+
+- Η αβεβαιότητα εκφράζεται μέσω κατανομής πιθανότητας.
+- Τα ισχυρά priors (με μεγάλο $\alpha+\beta$) επηρεάζουν περισσότερο την posterior εκτίμηση.
+
+---
+
+## 14. Βίντεο
+
+Ακολουθούν δύο σύντομα βίντεο που βοηθούν να καταλάβετε τις βασικές διαφορές ανάμεσα στη κλασική και τη Μπεϋζιανή στατιστική:
+
+👉 https://youtu.be/GEFxFVESQXc?si=tg-k8c58lK14hGwM
+
+👉 https://youtu.be/Iv-FKEgctKk?si=W4Q5l43mRzk0YMJJ
+
+---
+
