@@ -1,6 +1,5 @@
 ---
 title: "Lab 2 – Από τον Κανόνα του Bayes στη Μπεϋζιανή Εκτίμηση"
-author: "Πολυχρόνης Κωστούλας"
 format:
   html:
     toc: true
