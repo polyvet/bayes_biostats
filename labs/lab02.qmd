@@ -99,6 +99,8 @@ L(\theta \mid x) \propto \theta^x (1-\theta)^{n-x}
 $$
 
 (αγνοούμε τον όρο $\binom{n}{x}$ επειδή δεν εξαρτάται από την $\theta$)
+
+
 ___
 
 
@@ -147,12 +149,27 @@ ___
 ## 5.1 Μορφές Beta Κατανομής
 
 ```{r}
-curve(dbeta(x,1,1), from=0, to=1, col="black", lwd=2,
-      ylab="Density", main="Διαφορετικά Priors")
+# Δημιουργούμε grid
+theta_grid <- seq(0.0001, 0.9999, length.out = 5000)
 
-curve(dbeta(x,2,2), from=0, to=1, col="blue", lwd=2, add=TRUE)
-curve(dbeta(x,10,90), from=0, to=1, col="red", lwd=2, add=TRUE)
-curve(dbeta(x,0.5,0.5), from=0, to=1, col="green", lwd=2, add=TRUE)
+# Υπολογίζουμε μέγιστη πυκνότητα
+ymax <- max(
+  dbeta(theta_grid, 1, 1),
+  dbeta(theta_grid, 2, 2),
+  dbeta(theta_grid, 10, 90),
+  dbeta(theta_grid, 0.5, 0.5)
+)
+
+curve(dbeta(x,1,1),
+      from=0.0001, to=0.9999,
+      col="black", lwd=2,
+      ylim=c(0, ymax*1.05),
+      ylab="Density",
+      main="Διαφορετικά Priors")
+
+curve(dbeta(x,2,2),      add=TRUE, col="blue",  lwd=2)
+curve(dbeta(x,10,90),    add=TRUE, col="red",   lwd=2)
+curve(dbeta(x,0.5,0.5),  add=TRUE, col="green", lwd=2)
 
 legend("topright",
        legend=c("Beta(1,1)","Beta(2,2)","Beta(10,90)","Beta(0.5,0.5)"),
@@ -214,10 +231,13 @@ $$
 X \sim \text{Binomial}(n=1000, \theta)
 $$
 
+
 όπου $\theta$ είναι ο άγνωστος επιπολασμός.
+
+
 ---
 
-## 7.1 Non-informative prior
+### 7.1 Non-informative prior
 
 Επιλέγουμε non-informative prior:
 
@@ -515,11 +535,11 @@ results_df
 
 ## 14. Βίντεο
 
-Ακολουθούν δύο σύντομα βίντεο που βοηθούν να καταλάβετε τις βασικές διαφορές ανάμεσα στη κλασική και τη Μπεϋζιανή στατιστική:
+Ακολουθούν δύο σύντομα βίντεο που βοηθούν να καταλάβετε τις βασικές διαφορές ανάμεσα στην κλασική και τη Μπεϋζιανή στατιστική:
 
-👉 https://youtu.be/GEFxFVESQXc?si=tg-k8c58lK14hGwM
+- 🎥 [https://youtu.be/GEFxFVESQXc?si=tg-k8c58lK14hGwM](https://youtu.be/GEFxFVESQXc?si=tg-k8c58lK14hGwM)
 
-👉 https://youtu.be/Iv-FKEgctKk?si=W4Q5l43mRzk0YMJJ
+- 🎥 [https://youtu.be/Iv-FKEgctKk?si=W4Q5l43mRzk0YMJJ](https://youtu.be/Iv-FKEgctKk?si=W4Q5l43mRzk0YMJJ)
 
 ---
 
