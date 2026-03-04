@@ -1,0 +1,375 @@
+
+---
+title: "Lab 3 – Πώς λειτουργεί το MCMC στη Μπεϋζιανή Στατιστική"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: show
+    code-tools: true
+    theme: cosmo
+execute:
+  warning: false
+  message: false
+---
+
+
+---
+
+## 1. Στόχοι Εργαστηρίου
+
+Με την ολοκλήρωση του εργαστηρίου θα μπορείτε να:
+
+- εξηγείτε γιατί χρησιμοποιούμε **MCMC**
+- κατανοείτε τι σημαίνει **Markov chain**
+- υλοποιείτε έναν απλό **Metropolis–Hastings** αλγόριθμο
+- ερμηνεύετε:
+  - trace plots
+  - acceptance rate
+  - posterior samples
+
+---
+
+## 2. Προετοιμασία
+
+```{r}
+#| label: setup
+
+options(timeout = 600)
+
+pkgs <- c("ggplot2", "dplyr", "tibble")
+
+to_install <- setdiff(pkgs, rownames(installed.packages()))
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+
+suppressPackageStartupMessages({
+  lapply(pkgs, library, character.only = TRUE)
+})
+
+theme_set(theme_minimal(base_size = 14))
+```
+
+---
+
+
+## 3. Γιατί χρειάζεται το MCMC;
+
+Στο προηγούμενο εργαστήριο μπορέσαμε να υπολογίσουμε την **posterior distribution** αναλυτικά.
+
+Όμως σε πολλά μοντέλα:
+
+- η posterior δεν έχει κλειστή μορφή
+- δεν μπορούμε να πάρουμε δείγματα απευθείας από αυτή
+
+Παραδείγματα:
+
+- Bayesian logistic regression
+- hierarchical models
+- latent variable models
+- missing data models
+
+Σε αυτές τις περιπτώσεις χρησιμοποιούμε **MCMC (Markov Chain Monte Carlo)**.
+
+---
+
+
+## 4. Η βασική ιδέα του MCMC
+
+Αντί να υπολογίσουμε απευθείας την posterior κατανομή:
+
+$$
+p(\theta \mid y)
+$$
+
+κατασκευάζουμε μια **αλυσίδα Markov**:
+
+$$
+\theta^{(1)}, \theta^{(2)}, \theta^{(3)}, \ldots
+$$
+
+ώστε μετά από αρκετά βήματα:
+
+$$
+\theta^{(t)} \sim p(\theta \mid y)
+$$
+
+Δηλαδή οι τιμές της αλυσίδας προσεγγίζουν την **posterior κατανομή** της παραμέτρου.
+
+
+---
+
+
+## 5. Παράδειγμα στόχου κατανομής
+
+Για να δείξουμε πώς λειτουργεί το MCMC, θα χρησιμοποιήσουμε μια απλή posterior.
+
+Έστω ότι:
+
+$$
+\theta \sim \text{Beta}(10,30)
+$$
+
+Η πραγματική κατανομή είναι:
+
+```{r}
+#| label: target-distribution
+
+theta_grid <- seq(0.001, 0.999, length.out = 2000)
+
+plot(theta_grid,
+     dbeta(theta_grid, 10, 30),
+     type = "l",
+     lwd = 2,
+     col = "blue",
+     xlab = expression(theta),
+     ylab = "Density",
+     main = "Στόχος κατανομής (Posterior)")
+
+```
+
+Ο στόχος του MCMC είναι να παράγει δείγματα από αυτή την κατανομή.
+
+---
+
+
+## 6. Ο αλγόριθμος Metropolis–Hastings
+
+Η βασική ιδέα:
+
+1. Ξεκινάμε από μια αρχική τιμή $\theta_0$
+2. Προτείνουμε μια νέα τιμή $\theta^\*$
+3. Υπολογίζουμε την πιθανότητα αποδοχής
+
+$$
+\alpha =
+\min \left(
+1,
+\frac{\pi(\theta^\*)}{\pi(\theta_t)}
+\right)
+$$
+
+4. Αν η πρόταση γίνει αποδεκτή → μετακινούμαστε στη νέα τιμή
+5. Αν όχι → παραμένουμε στην τρέχουσα τιμή
+
+---
+
+## 7. Υλοποίηση Metropolis–Hastings
+
+```{r}
+#| label: metropolis-algorithm
+
+metropolis <- function(n_iter = 20000,
+                       start = 0.3,
+                       proposal_sd = 0.05) {
+
+  theta <- numeric(n_iter)
+  theta[1] <- start
+
+  accepted <- 0
+
+  for(i in 2:n_iter){
+
+    proposal <- rnorm(1, theta[i-1], proposal_sd)
+
+    if(proposal > 0 && proposal < 1){
+
+      ratio <- dbeta(proposal, 10, 30) /
+               dbeta(theta[i-1], 10, 30)
+
+      alpha <- min(1, ratio)
+
+      if(runif(1) < alpha){
+
+        theta[i] <- proposal
+        accepted <- accepted + 1
+
+      } else {
+
+        theta[i] <- theta[i-1]
+
+      }
+
+    } else {
+
+      theta[i] <- theta[i-1]
+
+    }
+
+  }
+
+  list(
+    samples = theta,
+    acc_rate = accepted / n_iter
+  )
+
+}
+```
+
+
+---
+
+## 8. Τρέχουμε τον αλγόριθμο
+
+```{r{
+fit <- metropolis()
+
+samples <- fit$samples
+
+fit$acc_rate
+```
+
+Η acceptance rate δείχνει πόσο συχνά η αλυσίδα κινείται.
+
+Τυπικές τιμές:
+ - 20% – 50%
+
+---
+
+## 9. Trace plot
+
+Το trace plot δείχνει την πορεία της αλυσίδας.
+
+```{r{
+plot(samples,
+     type="l",
+     col="steelblue",
+     xlab="Iteration",
+     ylab=expression(theta),
+     main="Trace plot")
+
+```
+
+Αν η αλυσίδα “κινείται καλά” τότε:
+ - δεν κολλάει
+ - εξερευνά όλο το χώρο
+
+---
+
+## 10. Posterior histogram
+
+```{r{
+hist(samples,
+     prob=TRUE,
+     breaks=40,
+     col="lightblue",
+     main="MCMC posterior samples",
+     xlab=expression(theta))
+
+curve(dbeta(x,10,30),
+      add=TRUE,
+      col="red",
+      lwd=2)
+```
+
+
+Η κόκκινη γραμμή είναι η πραγματική κατανομή.
+
+Βλέπουμε ότι το MCMC την προσεγγίζει.
+
+---
+
+## 11. Posterior summaries
+
+```{r[
+mean(samples)
+
+quantile(samples,c(0.025,0.975))
+
+```
+
+Αυτές οι ποσότητες εκτιμούν:
+ - posterior mean
+ - 95% credible interval
+
+
+---
+
+## 12. Πώς επηρεάζει το proposal step;
+
+Δοκιμάστε διαφορετικά proposal standard deviations.
+
+```{r[
+
+fit_small <- metropolis(proposal_sd=0.01)
+fit_large <- metropolis(proposal_sd=0.2)
+
+fit_small$acc_rate
+fit_large$acc_rate
+
+```
+
+Μικρό proposal:
+ - υψηλό acceptance
+ - αργή κίνηση
+
+Μεγάλο proposal:
+ - χαμηλό acceptance
+ - μεγάλα άλματα
+
+---
+
+## 13. Ασκήσεις
+
+### Άσκηση 1
+
+Τρέξτε τον αλγόριθμο με διαφορετικές τιμές του `proposal_sd`:
+
+- `proposal_sd = 0.01`
+- `proposal_sd = 0.05`
+- `proposal_sd = 0.2`
+
+Πώς αλλάζει:
+
+- το trace plot
+- το acceptance rate;
+
+---
+
+### Άσκηση 2
+
+Αυξήστε τις επαναλήψεις:
+
+```{r}
+metropolis(n_iter=100000)
+```
+
+Τι παρατηρείτε στο histogram;
+
+---
+
+### Άσκηση 3
+
+Υπολογίστε την πιθανότητα:
+
+$$
+P(\theta > 0.4)
+$$
+
+χρησιμοποιώντας τα δείγματα MCMC.
+
+
+---
+
+## 14. Σύνοψη
+
+Το **MCMC**:
+
+- δημιουργεί δείγματα από την posterior κατανομή
+- επιτρέπει Bayesian ανάλυση όταν δεν υπάρχει κλειστή μορφή της posterior
+- βασίζεται σε αλυσίδες Markov
+
+Ο αλγόριθμος **Metropolis–Hastings**:
+
+1. προτείνει μια νέα τιμή της παραμέτρου
+2. αποδέχεται ή απορρίπτει την πρόταση
+3. δημιουργεί μια αλυσίδα δειγμάτων
+
+Τα δείγματα αυτά χρησιμοποιούνται για να εκτιμήσουμε:
+
+- posterior mean
+- credible intervals
+- posterior probabilities
+
+---
