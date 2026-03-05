@@ -34,6 +34,7 @@ execute:
 
 ```{r}
 #| label: setup
+#| include: false
 
 options(timeout = 600)
 
@@ -136,11 +137,14 @@ plot(theta_grid,
 
 ## 6. Ο αλγόριθμος Metropolis–Hastings
 
-Η βασική ιδέα:
+Η βασική ιδέα είναι να δημιουργήσουμε μια **αλυσίδα Markov** που έχει ως
+στόχο την κατανομή \( \pi(\theta) \) (την posterior κατανομή).
 
-1. Ξεκινάμε από μια αρχική τιμή $\theta_0$
-2. Προτείνουμε μια νέα τιμή $\theta^\*$
-3. Υπολογίζουμε την πιθανότητα αποδοχής
+Ο αλγόριθμος λειτουργεί ως εξής:
+
+1. Ξεκινάμε από μια αρχική τιμή \( \theta_0 \)
+2. Προτείνουμε μια νέα τιμή \( \theta^\* \) από μια proposal distribution
+3. Υπολογίζουμε την πιθανότητα αποδοχής:
 
 $$
 \alpha =
@@ -150,8 +154,15 @@ $$
 \right)
 $$
 
-4. Αν η πρόταση γίνει αποδεκτή → μετακινούμαστε στη νέα τιμή
-5. Αν όχι → παραμένουμε στην τρέχουσα τιμή
+4. Με πιθανότητα \( \alpha \) αποδεχόμαστε την πρόταση και θέτουμε  
+\[
+\theta_{t+1} = \theta^\*
+\]
+
+5. Διαφορετικά απορρίπτουμε την πρόταση και παραμένουμε στην ίδια τιμή  
+\[
+\theta_{t+1} = \theta_t
+\]
 
 ---
 
@@ -212,7 +223,7 @@ metropolis <- function(n_iter = 20000,
 
 ## 8. Τρέχουμε τον αλγόριθμο
 
-```{r{
+```{r}
 fit <- metropolis()
 
 samples <- fit$samples
@@ -231,7 +242,7 @@ fit$acc_rate
 
 Το trace plot δείχνει την πορεία της αλυσίδας.
 
-```{r{
+```{r}
 plot(samples,
      type="l",
      col="steelblue",
@@ -249,7 +260,7 @@ plot(samples,
 
 ## 10. Posterior histogram
 
-```{r{
+```{r}
 hist(samples,
      prob=TRUE,
      breaks=40,
@@ -272,7 +283,7 @@ curve(dbeta(x,10,30),
 
 ## 11. Posterior summaries
 
-```{r[
+```{r}
 mean(samples)
 
 quantile(samples,c(0.025,0.975))
@@ -290,7 +301,7 @@ quantile(samples,c(0.025,0.975))
 
 Δοκιμάστε διαφορετικά proposal standard deviations.
 
-```{r[
+```{r}
 
 fit_small <- metropolis(proposal_sd=0.01)
 fit_large <- metropolis(proposal_sd=0.2)
@@ -329,10 +340,21 @@ fit_large$acc_rate
 
 ### Άσκηση 2
 
-Αυξήστε τις επαναλήψεις:
+### Άσκηση 2
+
+Αυξήστε τον αριθμό των επαναλήψεων του MCMC:
 
 ```{r}
-metropolis(n_iter=100000)
+fit_long <- metropolis(n_iter = 100000)
+
+samples_long <- fit_long$samples
+
+hist(samples_long,
+     prob = TRUE,
+     breaks = 40,
+     col = "lightblue",
+     main = "Posterior samples (100000 iterations)",
+     xlab = expression(theta))
 ```
 
 Τι παρατηρείτε στο histogram;
