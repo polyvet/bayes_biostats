@@ -10,7 +10,7 @@ format:
     theme: cosmo
 execute:
   warning: false
-  message: false 
+  message: false
 ---
 
 ## 1. Στόχοι Εργαστηρίου
@@ -58,6 +58,512 @@ theme_set(theme_minimal(base_size = 14))
 ## 3. Από τον Χειροκίνητο MCMC στο JAGS
 
 Στο **Lab 3** υλοποιήσαμε χειροκίνητα τον αλγόριθμο **Metropolis–Hastings**. Αν και αυτό μας βοήθησε να κατανοήσουμε πώς λειτουργεί το MCMC από μέσα, στην πράξη χρησιμοποιούμε εξειδικευμένο λογισμικό.
+
+Το **JAGS** (Just Another Gibbs Sampler) είναι ένα τέτοιο λογισμικό που:
+
+- δέχεται ένα Bayesian μοντέλο γραμμένο σε μια απλή γλώσσα
+- εκτελεί αυτόματα αλγορίθμους MCMC (Gibbs sampling, slice sampling κλπ.)
+- επιστρέφει δείγματα από την posterior κατανομή
+
+Στην **R** χρησιμοποιούμε το πακέτο **`runjags`** ως "γέφυρα" για να επικοινωνούμε με το JAGS.
+
+Η γενική ροή εργασίας είναι:
+
+$$
+\underbrace{\text{Μοντέλο (JAGS syntax)}}_{\text{prior + likelihood}}
+\xrightarrow{\texttt{run.jags()}}
+\underbrace{\text{Δείγματα MCMC}}_{\text{από την posterior}}
+\xrightarrow{\text{ανάλυση}}
+\underbrace{\text{Αποτελέσματα}}_{\text{mean, CI, διαγνωστικά}}
+$$
+
+---
+
+## 4. Επανάληψη: Το Beta-Binomial Μοντέλο
+
+Στο **Lab 2** μελετήσαμε αναλυτικά το Beta-Binomial μοντέλο. Τώρα θα το υλοποιήσουμε με JAGS.
+
+Το μοντέλο αποτελείται από δύο στάδια:
+
+**Prior:**
+
+$$
+\theta \sim \text{Beta}(\alpha, \beta)
+$$
+
+**Likelihood:**
+
+$$
+X \mid \theta \sim \text{Binomial}(n, \theta)
+$$
+
+Η posterior κατανομή, όπως αποδείξαμε στο Lab 2, είναι:
+
+$$
+\theta \mid x \sim \text{Beta}(\alpha + x,\; \beta + n - x)
+$$
+
+::: {.callout-note}
+Αυτή η **αναλυτική λύση** (conjugate posterior) θα μας χρησιμεύσει για να **επαληθεύσουμε** τα αποτελέσματα του JAGS. Στο JAGS δεν χρειαζόμαστε να ξέρουμε ότι υπάρχει κλειστή μορφή — το λογισμικό υπολογίζει τα δείγματα MCMC αυτόματα.
+:::
+
+---
+
+## 5. Τα Δεδομένα
+
+Χρησιμοποιούμε το ίδιο παράδειγμα με το Lab 2: εκτίμηση του **επιπολασμού φυματίωσης (TB)** σε νοσηλευόμενους.
+
+- $n = 1000$ εξετασθέντα άτομα
+- $x = 5$ θετικά περιστατικά
+
+```{r}
+#| label: data
+
+n <- 1000   # συνολικές παρατηρήσεις
+x <- 5      # θετικά περιστατικά
+
+cat("Δεδομένα:", x, "θετικά από", n, "άτομα\n")
+cat("Κλασική εκτίμηση (MLE):", round(x / n, 5), "\n")
+```
+
+---
+
+## 6. Ορισμός του Μοντέλου στη Γλώσσα JAGS
+
+Το JAGS δέχεται ένα μοντέλο γραμμένο ως **κείμενο** μέσα σε μια R μεταβλητή.
+Η γλώσσα μοιάζει με την R, με μερικές διαφορές στα ονόματα κατανομών.
+
+```{r}
+#| label: jags-model
+
+model_string <- "
+model {
+
+  # --- Prior ---
+  theta ~ dbeta(alpha_prior, beta_prior)
+
+  # --- Likelihood ---
+  x ~ dbin(theta, n)
+
+}
+"
+```
+
+::: {.callout-note}
+**Λεξιλόγιο JAGS:**
+
+| JAGS | Μαθηματική σημασία |
+|------|-------------------|
+| `theta ~ dbeta(a, b)` | $\theta \sim \text{Beta}(a, b)$ |
+| `x ~ dbin(p, n)` | $X \mid p \sim \text{Binomial}(n, p)$ |
+| `~` | «ακολουθεί την κατανομή» |
+
+- Οι **παρατηρημένες** ποσότητες (π.χ. `x`, `n`) δίνονται ως δεδομένα.
+- Οι **άγνωστες** παράμετροι (π.χ. `theta`) εκτιμώνται μέσω MCMC.
+:::
+
+---
+
+## 7. Εκτέλεση με runjags: Non-informative Prior
+
+### 7.1 Εκτέλεση Μοντέλου
+
+Ξεκινάμε με **non-informative prior** $\theta \sim \text{Beta}(1, 1)$, που αντιστοιχεί σε πλήρη άγνοια για τον επιπολασμό.
+
+```{r}
+#| label: run-noninf
+
+# Δεδομένα που περνάμε στο JAGS
+jags_data_noninf <- list(
+  x           = x,
+  n           = n,
+  alpha_prior = 1,
+  beta_prior  = 1
+)
+
+# Εκτέλεση
+fit_noninf <- run.jags(
+  model    = model_string,
+  data     = jags_data_noninf,
+  monitor  = "theta",
+  n.chains = 3,
+  burnin   = 2000,
+  sample   = 10000,
+  thin     = 1,
+  method   = "rjags",
+  silent.jags = TRUE
+)
+
+summary(fit_noninf)
+```
+
+::: {.callout-note}
+**Παράμετροι του `run.jags()`:**
+
+| Παράμετρος | Σημασία |
+|------------|---------|
+| `n.chains` | Αριθμός ανεξάρτητων αλυσίδων MCMC (συνήθως 3–4) |
+| `burnin`   | Αρχικά δείγματα που «πετάμε» ώσπου να συγκλίνει η αλυσίδα |
+| `sample`   | Δείγματα που κρατάμε μετά το burnin |
+| `thin`     | Κρατάμε 1 από κάθε `thin` δείγματα (μειώνει αυτοσυσχέτιση) |
+| `monitor`  | Παράμετροι που παρακολουθούμε |
+:::
+
+---
+
+### 7.2 Trace Plot και Διαγνωστικά
+
+```{r}
+#| label: trace-noninf
+#| fig-cap: "Trace plot και posterior density για theta (Non-informative prior)"
+
+plot(fit_noninf, vars = "theta")
+```
+
+Τι κοιτάζουμε στο trace plot:
+
+- **Mixing:** η αλυσίδα κινείται ελεύθερα και δεν «κολλάει»
+- **Stationarity:** δεν υπάρχει τάση ανόδου ή καθόδου
+- **Overlap:** οι τρεις αλυσίδες επικαλύπτονται (ίδια στάσιμη κατανομή)
+
+---
+
+### 7.3 Σύγκριση με Αναλυτική Λύση
+
+Υπολογίζουμε την posterior αναλυτικά (Lab 2, conjugate prior) και συγκρίνουμε με τα αποτελέσματα του JAGS.
+
+```{r}
+#| label: comparison-noninf
+
+# Αναλυτική posterior: Beta(alpha + x, beta + n - x)
+alpha_post_anal <- 1 + x
+beta_post_anal  <- 1 + (n - x)
+
+post_mean_anal <- alpha_post_anal / (alpha_post_anal + beta_post_anal)
+ci_anal        <- qbeta(c(0.025, 0.975), alpha_post_anal, beta_post_anal)
+
+cat("=== Αναλυτική λύση (Beta conjugate) ===\n")
+cat("Posterior mean :", round(post_mean_anal, 6), "\n")
+cat("95% CrI        : [",
+    round(ci_anal[1], 6), ",",
+    round(ci_anal[2], 6), "]\n\n")
+
+cat("=== Αποτελέσματα JAGS ===\n")
+jags_sum <- summary(fit_noninf)
+print(jags_sum)
+```
+
+::: {.callout-note}
+Παρατηρούμε ότι τα αποτελέσματα του JAGS **συμπίπτουν σχεδόν τέλεια** με την αναλυτική λύση. Αυτό επιβεβαιώνει ότι το JAGS εκτιμά σωστά την posterior κατανομή.
+:::
+
+---
+
+## 8. Informative Prior: Beta(2, 920)
+
+Τώρα χρησιμοποιούμε το **informative prior** από το Lab 2, το οποίο ενσωματώνει ιστορική γνώση (επιπολασμός TB ≈ 0.2%):
+
+$$
+\theta \sim \text{Beta}(2, 920)
+$$
+
+```{r}
+#| label: run-inf
+
+jags_data_inf <- list(
+  x           = x,
+  n           = n,
+  alpha_prior = 2,
+  beta_prior  = 920
+)
+
+fit_inf <- run.jags(
+  model    = model_string,
+  data     = jags_data_inf,
+  monitor  = "theta",
+  n.chains = 3,
+  burnin   = 2000,
+  sample   = 10000,
+  thin     = 1,
+  method   = "rjags",
+  silent.jags = TRUE
+)
+
+summary(fit_inf)
+```
+
+---
+
+## 9. Γραφική Σύγκριση Posterior Κατανομών
+
+Εξάγουμε τα δείγματα και από τα δύο μοντέλα και τα συγκρίνουμε οπτικά.
+
+### 9.1 Εξαγωγή Δειγμάτων
+
+```{r}
+#| label: extract-samples
+
+mcmc_noninf <- as.mcmc.list(fit_noninf)
+mcmc_inf    <- as.mcmc.list(fit_inf)
+
+samples_noninf <- as.vector(as.matrix(mcmc_noninf))
+samples_inf    <- as.vector(as.matrix(mcmc_inf))
+
+cat("Δείγματα non-informative prior:", length(samples_noninf), "\n")
+cat("Δείγματα informative prior    :", length(samples_inf), "\n")
+```
+
+### 9.2 Histogram JAGS Δειγμάτων vs Αναλυτική Posterior
+
+```{r}
+#| label: plot-hist-noninf
+#| fig-cap: "JAGS δείγματα (ιστόγραμμα) vs αναλυτική posterior (κόκκινη γραμμή) — Non-informative prior"
+
+theta_seq <- seq(0, 0.02, length.out = 2000)
+
+hist(samples_noninf,
+     prob   = TRUE,
+     breaks = 60,
+     col    = "lightsteelblue",
+     border = "white",
+     xlim   = c(0, 0.02),
+     main   = "JAGS vs Αναλυτική Posterior (Non-informative)",
+     xlab   = expression(theta ~ "(επιπολασμός)"),
+     ylab   = "Πυκνότητα")
+
+curve(dbeta(x, 1 + 5, 1 + 995),
+      from = 0, to = 0.02,
+      col  = "red", lwd = 2,
+      add  = TRUE)
+
+abline(v = x / n, lty = 2, col = "darkgray")
+
+legend("topright",
+       legend = c("JAGS δείγματα", "Αναλυτική Beta(6, 996)", "MLE (x/n)"),
+       fill   = c("lightsteelblue", NA, NA),
+       lty    = c(NA, 1, 2),
+       lwd    = c(NA, 2, 1),
+       col    = c("lightsteelblue", "red", "darkgray"),
+       bty    = "n")
+```
+
+### 9.3 Σύγκριση Δύο Priors
+
+```{r}
+#| label: plot-two-priors
+#| fig-cap: "Σύγκριση posterior: Non-informative vs Informative prior"
+
+df_plot <- tibble(
+  theta = c(samples_noninf, samples_inf),
+  prior = rep(c("Non-informative  Beta(1,1)",
+                "Informative  Beta(2,920)"),
+              c(length(samples_noninf), length(samples_inf)))
+)
+
+ggplot(df_plot, aes(x = theta, fill = prior, color = prior)) +
+  geom_density(alpha = 0.35, linewidth = 1) +
+  geom_vline(xintercept = x / n, linetype = "dashed", color = "black") +
+  scale_fill_manual(values  = c("steelblue", "tomato")) +
+  scale_color_manual(values = c("steelblue", "tomato")) +
+  scale_x_continuous(limits = c(0, 0.015),
+                     labels = scales::label_number(accuracy = 0.001)) +
+  labs(
+    title   = "Posterior κατανομές για θ (JAGS δείγματα)",
+    x       = expression(theta ~ "(επιπολασμός)"),
+    y       = "Πυκνότητα",
+    fill    = "Prior",
+    color   = "Prior",
+    caption = "Διακεκομμένη γραμμή: MLE = x/n = 0.005"
+  ) +
+  theme(legend.position = "bottom")
+```
+
+::: {.callout-note}
+Παρατηρούμε ότι το **informative prior** «τραβάει» την posterior προς μικρότερες τιμές (προς τη μέση τιμή του prior ≈ 0.002), ενώ το **non-informative prior** αφήνει τα δεδομένα να «μιλήσουν» ελεύθερα.
+:::
+
+---
+
+## 10. Διαγνωστικά Σύγκλισης
+
+Η ποιότητα των αποτελεσμάτων MCMC εξαρτάται από τη **σύγκλιση** των αλυσίδων. Χρησιμοποιούμε τρία βασικά εργαλεία.
+
+### 10.1 Gelman–Rubin Diagnostic ($\hat{R}$)
+
+Το $\hat{R}$ συγκρίνει τη διακύμανση **εντός** και **μεταξύ** αλυσίδων:
+
+$$
+\hat{R} = \sqrt{\frac{\text{Var}(\theta \mid y) + \frac{B}{m}}{\text{Var εντός αλυσίδων}}}
+$$
+
+- $\hat{R} \approx 1.00$ → οι αλυσίδες έχουν συγκλίνει ✅
+- $\hat{R} > 1.05$ → υπάρχει πρόβλημα σύγκλισης ⚠️
+
+```{r}
+#| label: gelman-rubin
+
+gelman.diag(mcmc_noninf)
+```
+
+### 10.2 Effective Sample Size (ESS)
+
+Το **effective sample size** μετράει πόσα «ανεξάρτητα» δείγματα έχουμε στην πράξη — μετά την αφαίρεση της αυτοσυσχέτισης:
+
+```{r}
+#| label: ess
+
+effectiveSize(mcmc_noninf)
+```
+
+::: {.callout-note}
+Θέλουμε **ESS > 1000** για αξιόπιστες εκτιμήσεις. Αν το ESS είναι πολύ μικρό, αυξάνουμε το `sample` ή το `thin`.
+:::
+
+### 10.3 Autocorrelation Plot
+
+Η αυτοσυσχέτιση δείχνει πόσο εξαρτημένα είναι τα διαδοχικά δείγματα της αλυσίδας. Ιδανικά, η συσχέτιση πέφτει γρήγορα στο μηδέν.
+
+```{r}
+#| label: autocorr
+#| fig-cap: "Αυτοσυσχέτιση δειγμάτων MCMC (αλυσίδα 1)"
+
+autocorr.plot(mcmc_noninf[[1]],
+              main = "Autocorrelation – theta",
+              lag.max = 30)
+```
+
+---
+
+## 11. Συνολική Σύνοψη Αποτελεσμάτων
+
+Συγκεντρώνουμε τα βασικά αποτελέσματα και για τα δύο priors σε έναν πίνακα.
+
+```{r}
+#| label: final-summary
+
+r_hat_noninf <- gelman.diag(mcmc_noninf)$psrf["theta", "Point est."]
+r_hat_inf    <- gelman.diag(mcmc_inf)$psrf["theta", "Point est."]
+
+ess_noninf <- effectiveSize(mcmc_noninf)[["theta"]]
+ess_inf    <- effectiveSize(mcmc_inf)[["theta"]]
+
+tibble(
+  Prior             = c("Non-informative Beta(1,1)", "Informative Beta(2,920)"),
+  `Prior Mean`      = c(round(1/(1+1), 4),       round(2/(2+920), 4)),
+  `Posterior Mean`  = c(round(mean(samples_noninf), 6),
+                        round(mean(samples_inf), 6)),
+  `2.5%`            = c(round(quantile(samples_noninf, 0.025), 6),
+                        round(quantile(samples_inf, 0.025), 6)),
+  `97.5%`           = c(round(quantile(samples_noninf, 0.975), 6),
+                        round(quantile(samples_inf, 0.975), 6)),
+  `R-hat`           = c(round(r_hat_noninf, 4), round(r_hat_inf, 4)),
+  `ESS`             = c(round(ess_noninf),       round(ess_inf))
+)
+```
+
+---
+
+## 12. Ασκήσεις
+
+### Άσκηση 1 — Διαφορετικά Priors
+
+Τρέξτε το ίδιο μοντέλο JAGS με τα παρακάτω priors και συγκρίνετε τις posterior μέσες τιμές:
+
+- $\theta \sim \text{Beta}(1, 1)$
+- $\theta \sim \text{Beta}(5, 95)$
+- $\theta \sim \text{Beta}(50, 950)$
+
+Ποιο prior επηρεάζει περισσότερο το αποτέλεσμα; Γιατί;
+
+---
+
+### Άσκηση 2 — Αύξηση Δεδομένων
+
+Χρησιμοποιήστε **n = 200** και **x = 1** με non-informative prior $\text{Beta}(1,1)$.
+
+1. Τρέξτε το μοντέλο JAGS.
+2. Συγκρίνετε την posterior mean και το 95% CrI με την αναλυτική λύση $\text{Beta}(2, 200)$.
+
+---
+
+### Άσκηση 3 — Burnin και Σύγκλιση
+
+Τρέξτε το μοντέλο δύο φορές:
+
+- με `burnin = 100` (πολύ μικρό)
+- με `burnin = 5000`
+
+Πώς επηρεάζεται:
+
+- το trace plot;
+- η τιμή $\hat{R}$;
+
+---
+
+### Λύση Άσκησης 1
+
+```{r}
+#| label: solution-ex1
+#| echo: false
+
+priors_list <- list(
+  c(1, 1),
+  c(5, 95),
+  c(50, 950)
+)
+
+results_ex1 <- lapply(priors_list, function(p) {
+  jd <- list(x = x, n = n, alpha_prior = p[1], beta_prior = p[2])
+  fit_ex <- run.jags(
+    model       = model_string,
+    data        = jd,
+    monitor     = "theta",
+    n.chains    = 3,
+    burnin      = 2000,
+    sample      = 5000,
+    thin        = 1,
+    method      = "rjags",
+    silent.jags = TRUE
+  )
+  s <- as.vector(as.matrix(as.mcmc.list(fit_ex)))
+  tibble(
+    Prior            = paste0("Beta(", p[1], ",", p[2], ")"),
+    `Prior Mean`     = round(p[1] / (p[1] + p[2]), 4),
+    `Posterior Mean` = round(mean(s), 6),
+    `ESS (prior)`    = p[1] + p[2]
+  )
+})
+
+bind_rows(results_ex1)
+```
+
+---
+
+## 13. Σύνοψη
+
+Σε αυτό το εργαστήριο:
+
+- Μάθαμε πώς να γράφουμε ένα **Bayesian μοντέλο στη γλώσσα JAGS**
+- Χρησιμοποιήσαμε το `runjags` για να εκτελέσουμε **MCMC αυτόματα**, χωρίς να γράφουμε τον αλγόριθμο χειροκίνητα
+- Επαληθεύσαμε τα αποτελέσματα συγκρίνοντάς τα με την **αναλυτική λύση** του Lab 2
+- Εφαρμόσαμε **διαγνωστικά σύγκλισης** ($\hat{R}$, ESS, autocorrelation)
+- Συγκρίναμε **non-informative** και **informative** priors
+
+Η γενική ροή ενός Bayesian μοντέλου με JAGS είναι:
+
+1. **Ορισμός μοντέλου** — prior + likelihood σε JAGS syntax
+2. **Προετοιμασία δεδομένων** — `list()` στην R
+3. **Εκτέλεση** — `run.jags()`
+4. **Έλεγχος σύγκλισης** — trace plots, $\hat{R}$, ESS
+5. **Εξαγωγή posterior** — mean, credible intervals, πιθανότητες
+
+::: {.callout-note}
+Η **ισχύς του JAGS** είναι ότι αυτή η ροή λειτουργεί για **οποιοδήποτε μοντέλο**, ακόμα και αν δεν υπάρχει αναλυτική posterior (π.χ. ιεραρχικά μοντέλα, μοντέλα με latent variables).
+:::
+
+👉 **Επόμενο εργαστήριο:** Θα επεκτείνουμε το μοντέλο ώστε να εκτιμούμε ταυτόχρονα τον **πραγματικό επιπολασμό** και τα χαρακτηριστικά της διαγνωστικής δοκιμής (Ευαισθησία / Ειδικότητα) — χωρίς Gold Standard.
+
+---
 
 Το **JAGS** (Just Another Gibbs Sampler) είναι ένα τέτοιο λογισμικό που:
 
