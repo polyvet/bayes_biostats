@@ -26,7 +26,11 @@ jobs:
       # 3) Install R
       - uses: r-lib/actions/setup-r@v2
 
-      # 4) Install ONLY the basic R packages needed for Quarto labs
+      # 4) Install JAGS system library (required by runjags)
+      - name: Install JAGS
+        run: sudo apt-get update -y && sudo apt-get install -y jags
+
+      # 5) Install R packages needed for all labs
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           packages: |
@@ -36,13 +40,18 @@ jobs:
             any::dplyr
             any::tidyr
             any::readr
-          cache-version: 1
+            any::tibble
+            any::scales
+            any::coda
+            any::rjags
+            any::runjags
+          cache-version: 2
 
-      # 5) Render the site
+      # 6) Render the site
       - name: Render Quarto site
         run: quarto render
 
-      # 6) Upload site for GitHub Pages
+      # 7) Upload site for GitHub Pages
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs
@@ -53,5 +62,6 @@ jobs:
     environment:
       name: github-pages
     steps:
-      # 7) Deploy to GitHub Pages
+      # 8) Deploy to GitHub Pages
       - uses: actions/deploy-pages@v4
+
