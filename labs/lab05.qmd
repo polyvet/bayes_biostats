@@ -1,0 +1,371 @@
+---
+title: "Lab 5 – Εκτίμηση Πραγματικού Επιπολασμού με Γνωστά Se και Sp"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: show
+    code-tools: true
+    theme: cosmo
+execute:
+  warning: false
+  message: false
+---
+
+## 1. Στόχοι Εργαστηρίου
+
+Με την ολοκλήρωση αυτού του εργαστηρίου, θα είστε σε θέση να:
+
+* διακρίνετε τον **φαινομενικό επιπολασμό** (apparent prevalence) από τον **πραγματικό επιπολασμό** (true prevalence)
+* διορθώνετε την εκτίμηση επιπολασμού όταν το διαγνωστικό τεστ δεν είναι τέλειο
+* ενσωματώνετε γνωστές τιμές **ευαισθησίας** και **ειδικότητας** σε Bayesian μοντέλο
+* υλοποιείτε το μοντέλο σε **JAGS** μέσω του **runjags**
+* ερμηνεύετε posterior summaries, credible intervals και trace plots
+
+---
+
+## 2. Προετοιμασία
+
+```{r}
+#| label: setup
+
+options(timeout = 600)
+
+pkgs <- c("runjags", "coda", "ggplot2", "dplyr", "tibble", "tidyr", "scales")
+
+to_install <- setdiff(pkgs, rownames(installed.packages()))
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+
+suppressPackageStartupMessages(
+  invisible(lapply(pkgs, library, character.only = TRUE))
+)
+
+theme_set(theme_minimal(base_size = 14))
+```
+
+::: {.callout-note}
+Το **JAGS** πρέπει να είναι εγκατεστημένο στο σύστημά σας. Αν δεν είναι, ανατρέξτε στις οδηγίες της αρχικής σελίδας του μαθήματος.
+:::
+
+---
+
+## 3. Από τον Φαινομενικό στον Πραγματικό Επιπολασμό
+
+Στα προηγούμενα εργαστήρια υποθέσαμε ότι τα θετικά αποτελέσματα αντιστοιχούν απευθείας σε πραγματικά θετικά άτομα.
+
+Στην πράξη όμως ένα διαγνωστικό τεστ έχει:
+
+* **Ευαισθησία**: $Se = P(T^+ \mid D^+)$
+* **Ειδικότητα**: $Sp = P(T^- \mid D^-)$
+
+Αν ο πραγματικός επιπολασμός είναι $TP$, τότε η πιθανότητα ένα άτομο να βγει θετικό στο τεστ είναι:
+
+$$
+AP = P(T^+) = Se \cdot TP + (1 - Sp) \cdot (1 - TP)
+$$
+
+Όπου:
+
+* $TP$ = true prevalence
+* $AP$ = apparent prevalence, δηλαδή το ποσοστό θετικών τεστ
+
+::: {.callout-note}
+Αν $Se = 1$ και $Sp = 1$, τότε $AP = TP$.  
+Αν το τεστ δεν είναι τέλειο, τότε το ποσοστό θετικών τεστ δεν είναι απαραίτητα ίσο με τον πραγματικό επιπολασμό.
+:::
+
+---
+
+## 4. Τα Δεδομένα
+
+Έστω ότι εξετάζουμε $n = 1000$ ζώα/άτομα με ένα διαγνωστικό τεστ και παρατηρούμε $x = 80$ θετικά αποτελέσματα.
+
+Για αυτό το εργαστήριο θεωρούμε ότι τα χαρακτηριστικά του τεστ είναι γνωστά:
+
+* $Se = 0.90$
+* $Sp = 0.95$
+
+```{r}
+#| label: data
+
+n <- 1000
+x <- 80
+
+se_fixed <- 0.90
+sp_fixed <- 0.95
+
+apparent_prev <- x / n
+
+tibble(
+  n = n,
+  positives = x,
+  apparent_prevalence = apparent_prev,
+  sensitivity = se_fixed,
+  specificity = sp_fixed
+) %>%
+  mutate(across(apparent_prevalence:specificity, scales::percent))
+```
+
+---
+
+## 5. Κλασική Διόρθωση Rogan-Gladen
+
+Πριν περάσουμε στο Bayesian μοντέλο, μπορούμε να δούμε τη γνωστή διόρθωση:
+
+$$
+\widehat{TP}_{RG} =
+\frac{AP + Sp - 1}{Se + Sp - 1}
+$$
+
+```{r}
+#| label: rogan-gladen
+
+tp_rg <- (apparent_prev + sp_fixed - 1) / (se_fixed + sp_fixed - 1)
+tp_rg <- max(0, min(1, tp_rg))
+
+cat("Apparent prevalence:", scales::percent(apparent_prev, accuracy = 0.1), "\n")
+cat("Rogan-Gladen corrected true prevalence:",
+    scales::percent(tp_rg, accuracy = 0.1), "\n")
+```
+
+::: {.callout-note}
+Η διόρθωση Rogan-Gladen δίνει ένα σημειακό αποτέλεσμα. Στη Bayesian προσέγγιση θα πάρουμε ολόκληρη posterior κατανομή για τον πραγματικό επιπολασμό.
+:::
+
+---
+
+## 6. Bayesian Μοντέλο
+
+Το μοντέλο μας είναι:
+
+$$
+TP \sim \text{Beta}(\alpha, \beta)
+$$
+
+$$
+AP = Se \cdot TP + (1 - Sp)(1 - TP)
+$$
+
+$$
+x \mid AP \sim \text{Binomial}(n, AP)
+$$
+
+Στο Lab 5 τα $Se$ και $Sp$ δίνονται ως γνωστές σταθερές.
+
+```{r}
+#| label: jags-model
+
+model_string <- "
+model {
+
+  # Prior για τον πραγματικό επιπολασμό
+  tp ~ dbeta(alpha_tp, beta_tp)
+
+  # Σχέση πραγματικού και φαινομενικού επιπολασμού
+  ap <- se * tp + (1 - sp) * (1 - tp)
+
+  # Likelihood για τα θετικά τεστ
+  x ~ dbin(ap, n)
+
+}
+"
+```
+
+---
+
+## 7. Εκτέλεση του Μοντέλου στο JAGS
+
+Ξεκινάμε με weak prior για τον πραγματικό επιπολασμό:
+
+$$
+TP \sim \text{Beta}(1, 1)
+$$
+
+```{r}
+#| label: run-jags
+
+jags_data <- list(
+  x = x,
+  n = n,
+  se = se_fixed,
+  sp = sp_fixed,
+  alpha_tp = 1,
+  beta_tp = 1
+)
+
+inits <- function() {
+  list(tp = runif(1, 0.01, 0.20))
+}
+
+fit_tp_fixed <- run.jags(
+  model = model_string,
+  data = jags_data,
+  inits = inits,
+  monitor = c("tp", "ap"),
+  n.chains = 3,
+  burnin = 2000,
+  sample = 10000,
+  thin = 1,
+  method = "rjags",
+  silent.jags = TRUE
+)
+
+summary(fit_tp_fixed)
+```
+
+---
+
+## 8. Διαγνωστικά Σύγκλισης
+
+```{r}
+#| label: trace
+#| fig-cap: "Trace plots και posterior densities για TP και AP"
+
+plot(fit_tp_fixed, vars = c("tp", "ap"))
+```
+
+Στο trace plot θέλουμε να βλέπουμε:
+
+* οι αλυσίδες να επικαλύπτονται
+* να μην υπάρχει εμφανής τάση προς τα πάνω ή προς τα κάτω
+* η posterior density να είναι σταθερή και λογική
+
+---
+
+## 9. Posterior Κατανομή του Πραγματικού Επιπολασμού
+
+```{r}
+#| label: posterior-draws
+
+mcmc_fixed <- as.mcmc.list(fit_tp_fixed)
+draws_fixed <- as.data.frame(do.call(rbind, mcmc_fixed))
+
+summary_tbl <- draws_fixed %>%
+  summarise(
+    mean_tp = mean(tp),
+    median_tp = median(tp),
+    lower_tp = quantile(tp, 0.025),
+    upper_tp = quantile(tp, 0.975),
+    mean_ap = mean(ap)
+  )
+
+summary_tbl %>%
+  mutate(across(everything(), ~ scales::percent(.x, accuracy = 0.01)))
+```
+
+```{r}
+#| label: density-tp
+#| fig-cap: "Posterior κατανομή του πραγματικού επιπολασμού"
+
+ggplot(draws_fixed, aes(x = tp)) +
+  geom_density(fill = "#80b1d3", alpha = 0.6) +
+  geom_vline(xintercept = apparent_prev, linetype = "dashed", color = "grey30") +
+  geom_vline(xintercept = tp_rg, linetype = "dotted", color = "red", linewidth = 1) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(
+    x = "True prevalence",
+    y = "Posterior density",
+    title = "True prevalence με γνωστά Se και Sp",
+    subtitle = "Διακεκομμένη γραμμή: apparent prevalence, κόκκινη dotted: Rogan-Gladen"
+  )
+```
+
+::: {.callout-note}
+Η posterior του $TP$ βρίσκεται χαμηλότερα από τον φαινομενικό επιπολασμό όταν υπάρχουν ψευδώς θετικά αποτελέσματα λόγω μη τέλειας ειδικότητας.
+:::
+
+---
+
+## 10. Σύγκριση: Τέλειο και Μη Τέλειο Τεστ
+
+Για να δούμε την επίδραση του $Se$ και του $Sp$, τρέχουμε το ίδιο μοντέλο με τέλειο τεστ.
+
+```{r}
+#| label: perfect-test
+
+jags_data_perfect <- jags_data
+jags_data_perfect$se <- 1
+jags_data_perfect$sp <- 1
+
+fit_perfect <- run.jags(
+  model = model_string,
+  data = jags_data_perfect,
+  inits = inits,
+  monitor = c("tp", "ap"),
+  n.chains = 3,
+  burnin = 2000,
+  sample = 10000,
+  thin = 1,
+  method = "rjags",
+  silent.jags = TRUE
+)
+
+draws_perfect <- as.data.frame(do.call(rbind, as.mcmc.list(fit_perfect))) %>%
+  mutate(model = "Τέλειο τεστ")
+
+draws_fixed_plot <- draws_fixed %>%
+  mutate(model = "Μη τέλειο τεστ")
+
+bind_rows(draws_perfect, draws_fixed_plot) %>%
+  ggplot(aes(x = tp, fill = model)) +
+  geom_density(alpha = 0.45) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(
+    x = "True prevalence",
+    y = "Posterior density",
+    fill = "Μοντέλο",
+    title = "Επίδραση της ατελούς διάγνωσης στην εκτίμηση του επιπολασμού"
+  )
+```
+
+---
+
+## 11. Άσκηση
+
+Χρησιμοποιήστε το ίδιο μοντέλο και αλλάξτε τις τιμές:
+
+1. $Se = 0.80$, $Sp = 0.95$
+2. $Se = 0.95$, $Sp = 0.90$
+3. $Se = 0.95$, $Sp = 0.99$
+
+Για κάθε σενάριο:
+
+* υπολογίστε την posterior mean του $TP$
+* υπολογίστε το 95% credible interval
+* συγκρίνετε την posterior με τον φαινομενικό επιπολασμό
+* σχολιάστε ποια παράμετρος επηρεάζει περισσότερο το αποτέλεσμα όταν η νόσος είναι σχετικά σπάνια
+
+```{r}
+#| label: exercise-template
+#| eval: false
+
+scenario_data <- jags_data
+scenario_data$se <- 0.95
+scenario_data$sp <- 0.99
+
+fit_scenario <- run.jags(
+  model = model_string,
+  data = scenario_data,
+  inits = inits,
+  monitor = c("tp", "ap"),
+  n.chains = 3,
+  burnin = 2000,
+  sample = 10000,
+  method = "rjags",
+  silent.jags = TRUE
+)
+
+summary(fit_scenario)
+```
+
+---
+
+## 12. Τι κρατάμε από το Lab 5
+
+* Το ποσοστό θετικών τεστ είναι ο **φαινομενικός επιπολασμός**, όχι απαραίτητα ο πραγματικός.
+* Με γνωστά $Se$ και $Sp$, μπορούμε να διορθώσουμε το μοντέλο ώστε να εκτιμά τον **πραγματικό επιπολασμό**.
+* Η Bayesian προσέγγιση δίνει posterior κατανομή και credible interval, όχι μόνο σημειακή διόρθωση.
+* Όταν η νόσος είναι σπάνια, η ειδικότητα μπορεί να έχει πολύ μεγάλη επίδραση στην εκτίμηση.
+
