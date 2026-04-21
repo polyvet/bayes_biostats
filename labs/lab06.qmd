@@ -1,0 +1,439 @@
+---
+title: "Lab 6 – Πραγματικός Επιπολασμός με Αβέβαια Se και Sp"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: show
+    code-tools: true
+    theme: cosmo
+execute:
+  warning: false
+  message: false
+---
+
+## 1. Στόχοι Εργαστηρίου
+
+Με την ολοκλήρωση αυτού του εργαστηρίου, θα είστε σε θέση να:
+
+* εξηγείτε γιατί τα $Se$ και $Sp$ δεν πρέπει πάντα να θεωρούνται γνωστά
+* μετατρέπετε γνώση ειδικών ή βιβλιογραφία σε **Beta priors**
+* χρησιμοποιείτε το πακέτο **`PriorGen`** για παραγωγή priors για proportions
+* υλοποιείτε Bayesian μοντέλο πραγματικού επιπολασμού με άγνωστα $Se$ και $Sp$
+* ερμηνεύετε πώς η αβεβαιότητα στα χαρακτηριστικά του τεστ μεταφέρεται στην posterior του επιπολασμού
+
+---
+
+## 2. Προετοιμασία
+
+```{r}
+#| label: setup
+
+options(timeout = 600)
+
+pkgs <- c(
+  "runjags", "coda", "ggplot2", "dplyr", "tibble", "tidyr", "scales",
+  "PriorGen"
+)
+
+to_install <- setdiff(pkgs, rownames(installed.packages()))
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+
+suppressPackageStartupMessages(
+  invisible(lapply(pkgs, library, character.only = TRUE))
+)
+
+theme_set(theme_minimal(base_size = 14))
+```
+
+::: {.callout-note}
+Το **PriorGen** παράγει prior distributions για proportions. Είναι ιδιαίτερα χρήσιμο για prevalence, sensitivity και specificity, επειδή μας επιτρέπει να μεταφράζουμε φράσεις όπως «η ευαισθησία είναι περίπου 90% και είμαστε 95% σίγουροι ότι είναι πάνω από 80%» σε παραμέτρους μιας Beta κατανομής.
+:::
+
+---
+
+## 3. Γιατί δεν κρατάμε πια Se και Sp σταθερά;
+
+Στο Lab 5 θεωρήσαμε ότι:
+
+$$
+Se = 0.90,\quad Sp = 0.95
+$$
+
+Στην πράξη όμως αυτές οι τιμές προέρχονται από:
+
+* μελέτες validation
+* προηγούμενη βιβλιογραφία
+* γνώμη ειδικών
+* διαφορετικούς πληθυσμούς από τον πληθυσμό που αναλύουμε
+
+Άρα δεν είναι πραγματικά «γνωστές». Έχουν και αυτές αβεβαιότητα.
+
+Στο Bayesian μοντέλο μπορούμε να γράψουμε:
+
+$$
+TP \sim \text{Beta}(\alpha_{TP}, \beta_{TP})
+$$
+
+$$
+Se \sim \text{Beta}(\alpha_{Se}, \beta_{Se})
+$$
+
+$$
+Sp \sim \text{Beta}(\alpha_{Sp}, \beta_{Sp})
+$$
+
+και:
+
+$$
+AP = Se \cdot TP + (1 - Sp)(1 - TP)
+$$
+
+$$
+x \mid AP \sim \text{Binomial}(n, AP)
+$$
+
+---
+
+## 4. Τα Δεδομένα
+
+Χρησιμοποιούμε τα ίδια δεδομένα με το Lab 5:
+
+```{r}
+#| label: data
+
+n <- 1000
+x <- 80
+apparent_prev <- x / n
+
+tibble(
+  n = n,
+  positives = x,
+  apparent_prevalence = scales::percent(apparent_prev)
+)
+```
+
+---
+
+## 5. Δημιουργία Priors με PriorGen
+
+Θα φτιάξουμε priors για $Se$ και $Sp$ με βάση υποθετική προηγούμενη γνώση.
+
+Για την ευαισθησία:
+
+> Αναμένουμε μέση τιμή περίπου 0.90 και είμαστε 95% σίγουροι ότι είναι μεγαλύτερη από 0.80.
+
+Για την ειδικότητα:
+
+> Αναμένουμε διάμεση τιμή περίπου 0.98 και είμαστε 95% σίγουροι ότι είναι μεγαλύτερη από 0.90.
+
+```{r}
+#| label: priorgen
+
+prior_se <- findbeta(
+  themean = 0.90,
+  percentile = 0.95,
+  lower.v = FALSE,
+  percentile.value = 0.80,
+  seed = 280385,
+  nsims = 10000
+)
+
+prior_sp <- findbeta(
+  themedian = 0.98,
+  percentile = 0.95,
+  lower.v = FALSE,
+  percentile.value = 0.90,
+  seed = 280385,
+  nsims = 10000
+)
+
+prior_se
+prior_sp
+```
+
+Η `findbeta()` επιστρέφει τις παραμέτρους της Beta κατανομής που ταιριάζουν με τις prior πεποιθήσεις μας.
+
+```{r}
+#| label: extract-priors
+
+se_par <- prior_se$parameters
+sp_par <- prior_sp$parameters
+
+alpha_se <- se_par[1]
+beta_se <- se_par[2]
+
+alpha_sp <- sp_par[1]
+beta_sp <- sp_par[2]
+
+tibble(
+  parameter = c("Se", "Sp"),
+  alpha = c(alpha_se, alpha_sp),
+  beta = c(beta_se, beta_sp),
+  prior_mean = c(
+    alpha_se / (alpha_se + beta_se),
+    alpha_sp / (alpha_sp + beta_sp)
+  )
+) %>%
+  mutate(prior_mean = scales::percent(prior_mean, accuracy = 0.1))
+```
+
+---
+
+## 6. Οπτικοποίηση των Priors
+
+```{r}
+#| label: plot-priors
+#| fig-cap: "Beta priors για Se και Sp από το PriorGen"
+
+theta_grid <- seq(0.001, 0.999, length.out = 2000)
+
+prior_plot_data <- tibble(
+  value = theta_grid,
+  Se = dbeta(theta_grid, alpha_se, beta_se),
+  Sp = dbeta(theta_grid, alpha_sp, beta_sp)
+) %>%
+  pivot_longer(cols = c(Se, Sp), names_to = "parameter", values_to = "density")
+
+ggplot(prior_plot_data, aes(x = value, y = density, color = parameter)) +
+  geom_line(linewidth = 1) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(
+    x = "Τιμή παραμέτρου",
+    y = "Prior density",
+    color = "Παράμετρος",
+    title = "Priors για τα χαρακτηριστικά του τεστ"
+  )
+```
+
+---
+
+## 7. JAGS Μοντέλο με Άγνωστα Se και Sp
+
+```{r}
+#| label: jags-model
+
+model_string <- "
+model {
+
+  # Priors
+  tp ~ dbeta(alpha_tp, beta_tp)
+  se ~ dbeta(alpha_se, beta_se)
+  sp ~ dbeta(alpha_sp, beta_sp)
+
+  # Apparent prevalence
+  ap <- se * tp + (1 - sp) * (1 - tp)
+
+  # Likelihood
+  x ~ dbin(ap, n)
+
+}
+"
+```
+
+::: {.callout-warning}
+Με ένα μόνο πληθυσμό και ένα μόνο τεστ, το μοντέλο δεν έχει πολλή πληροφορία για να ξεχωρίσει πλήρως $TP$, $Se$ και $Sp$ από τα δεδομένα. Γι' αυτό οι priors για $Se$ και $Sp$ είναι ουσιαστικό μέρος του μοντέλου, όχι τεχνική λεπτομέρεια.
+:::
+
+---
+
+## 8. Εκτέλεση στο JAGS
+
+```{r}
+#| label: run-jags
+
+jags_data <- list(
+  x = x,
+  n = n,
+  alpha_tp = 1,
+  beta_tp = 1,
+  alpha_se = alpha_se,
+  beta_se = beta_se,
+  alpha_sp = alpha_sp,
+  beta_sp = beta_sp
+)
+
+inits <- function() {
+  list(
+    tp = runif(1, 0.01, 0.20),
+    se = runif(1, 0.80, 0.99),
+    sp = runif(1, 0.90, 0.995)
+  )
+}
+
+fit_uncertain <- run.jags(
+  model = model_string,
+  data = jags_data,
+  inits = inits,
+  monitor = c("tp", "se", "sp", "ap"),
+  n.chains = 3,
+  burnin = 5000,
+  sample = 15000,
+  thin = 1,
+  method = "rjags",
+  silent.jags = TRUE
+)
+
+summary(fit_uncertain)
+```
+
+---
+
+## 9. Διαγνωστικά
+
+```{r}
+#| label: trace
+#| fig-cap: "Trace plots για TP, Se, Sp και AP"
+
+plot(fit_uncertain, vars = c("tp", "se", "sp", "ap"))
+```
+
+---
+
+## 10. Posterior Summaries
+
+```{r}
+#| label: posterior-summary
+
+draws_uncertain <- as.data.frame(do.call(rbind, as.mcmc.list(fit_uncertain)))
+
+draws_uncertain %>%
+  summarise(
+    mean_tp = mean(tp),
+    lower_tp = quantile(tp, 0.025),
+    upper_tp = quantile(tp, 0.975),
+    mean_se = mean(se),
+    mean_sp = mean(sp)
+  ) %>%
+  mutate(across(everything(), ~ scales::percent(.x, accuracy = 0.01)))
+```
+
+```{r}
+#| label: posterior-density
+#| fig-cap: "Posterior κατανομές για TP, Se και Sp"
+
+draws_uncertain %>%
+  select(tp, se, sp) %>%
+  pivot_longer(everything(), names_to = "parameter", values_to = "value") %>%
+  ggplot(aes(x = value, fill = parameter)) +
+  geom_density(alpha = 0.55) +
+  facet_wrap(~ parameter, scales = "free_y") +
+  scale_x_continuous(labels = scales::percent) +
+  labs(
+    x = "Τιμή",
+    y = "Posterior density",
+    title = "Posterior κατανομές"
+  ) +
+  guides(fill = "none")
+```
+
+---
+
+## 11. Σύγκριση με το Lab 5
+
+Τώρα συγκρίνουμε:
+
+* μοντέλο με σταθερά $Se = 0.90$, $Sp = 0.95$
+* μοντέλο με αβέβαια $Se$ και $Sp$
+
+```{r}
+#| label: fixed-comparison
+
+model_fixed <- "
+model {
+  tp ~ dbeta(alpha_tp, beta_tp)
+  ap <- se_fixed * tp + (1 - sp_fixed) * (1 - tp)
+  x ~ dbin(ap, n)
+}
+"
+
+fit_fixed <- run.jags(
+  model = model_fixed,
+  data = list(
+    x = x,
+    n = n,
+    alpha_tp = 1,
+    beta_tp = 1,
+    se_fixed = 0.90,
+    sp_fixed = 0.95
+  ),
+  inits = function() list(tp = runif(1, 0.01, 0.20)),
+  monitor = c("tp", "ap"),
+  n.chains = 3,
+  burnin = 2000,
+  sample = 10000,
+  method = "rjags",
+  silent.jags = TRUE
+)
+
+draws_fixed <- as.data.frame(do.call(rbind, as.mcmc.list(fit_fixed))) %>%
+  mutate(model = "Σταθερά Se/Sp")
+
+draws_uncertain_plot <- draws_uncertain %>%
+  mutate(model = "Αβέβαια Se/Sp")
+
+bind_rows(
+  draws_fixed %>% select(tp, model),
+  draws_uncertain_plot %>% select(tp, model)
+) %>%
+  ggplot(aes(x = tp, fill = model)) +
+  geom_density(alpha = 0.45) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(
+    x = "True prevalence",
+    y = "Posterior density",
+    fill = "Μοντέλο",
+    title = "Σύγκριση σταθερών και αβέβαιων χαρακτηριστικών τεστ"
+  )
+```
+
+::: {.callout-note}
+Όταν επιτρέπουμε στα $Se$ και $Sp$ να έχουν αβεβαιότητα, συνήθως αυξάνεται και η αβεβαιότητα του πραγματικού επιπολασμού. Αυτό είναι επιθυμητό: το μοντέλο παραδέχεται ότι δεν γνωρίζουμε τέλεια το τεστ.
+:::
+
+---
+
+## 12. Άσκηση
+
+Χρησιμοποιήστε το `PriorGen::findbeta()` για να φτιάξετε διαφορετικά priors:
+
+1. $Se$: mean 0.85 και 95% σιγουριά ότι είναι πάνω από 0.70
+2. $Sp$: median 0.99 και 95% σιγουριά ότι είναι πάνω από 0.95
+3. $Sp$: median 0.95 και 95% σιγουριά ότι είναι πάνω από 0.85
+
+Για κάθε σενάριο:
+
+* ξανατρέξτε το JAGS μοντέλο
+* συγκρίνετε την posterior του $TP$
+* σχολιάστε πώς αλλάζει το credible interval
+
+```{r}
+#| label: exercise-template
+#| eval: false
+
+new_prior_se <- findbeta(
+  themean = 0.85,
+  percentile = 0.95,
+  lower.v = FALSE,
+  percentile.value = 0.70
+)
+
+new_prior_sp <- findbeta(
+  themedian = 0.99,
+  percentile = 0.95,
+  lower.v = FALSE,
+  percentile.value = 0.95
+)
+```
+
+---
+
+## 13. Τι κρατάμε από το Lab 6
+
+* Τα $Se$ και $Sp$ είναι συχνά αβέβαιες παράμετροι και όχι τέλεια γνωστές σταθερές.
+* Το **PriorGen** βοηθά να μετατρέψουμε γνώση ειδικών ή βιβλιογραφία σε Beta priors.
+* Η αβεβαιότητα του τεστ μεταφέρεται σωστά στην posterior του πραγματικού επιπολασμού.
+* Σε μοντέλα με ένα τεστ και έναν πληθυσμό, οι priors για $Se$ και $Sp$ επηρεάζουν έντονα το αποτέλεσμα και πρέπει να τεκμηριώνονται.
+
