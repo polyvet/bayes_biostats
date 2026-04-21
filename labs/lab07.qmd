@@ -1,0 +1,410 @@
+---
+title: "Lab 7 – Bayesian Validation Διαγνωστικού Τεστ με Gold Standard"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: show
+    code-tools: true
+    theme: cosmo
+execute:
+  warning: false
+  message: false
+---
+
+## 1. Στόχοι Εργαστηρίου
+
+Με την ολοκλήρωση αυτού του εργαστηρίου, θα είστε σε θέση να:
+
+* διαβάζετε έναν πίνακα διασταύρωσης τεστ και **gold standard**
+* εκτιμάτε Bayesian την **ευαισθησία** και την **ειδικότητα**
+* υλοποιείτε validation μοντέλο στο **JAGS**
+* συγκρίνετε τα αποτελέσματα JAGS με την αναλυτική Beta-Binomial λύση
+* μεταφέρετε την posterior αβεβαιότητα των $Se$ και $Sp$ σε PPV/NPV για δεδομένο επιπολασμό
+
+---
+
+## 2. Προετοιμασία
+
+```{r}
+#| label: setup
+
+options(timeout = 600)
+
+pkgs <- c("runjags", "coda", "ggplot2", "dplyr", "tibble", "tidyr", "scales")
+
+to_install <- setdiff(pkgs, rownames(installed.packages()))
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+
+suppressPackageStartupMessages(
+  invisible(lapply(pkgs, library, character.only = TRUE))
+)
+
+theme_set(theme_minimal(base_size = 14))
+```
+
+---
+
+## 3. Το Πρόβλημα Validation
+
+Στα Lab 5 και Lab 6 χρησιμοποιήσαμε $Se$ και $Sp$ για να διορθώσουμε την εκτίμηση επιπολασμού.
+
+Τώρα κάνουμε το αντίστροφο:
+
+> Έχουμε ένα σύνολο δειγμάτων όπου γνωρίζουμε την πραγματική κατάσταση μέσω gold standard και θέλουμε να εκτιμήσουμε την ευαισθησία και την ειδικότητα του νέου τεστ.
+
+Ο πίνακας έχει τη μορφή:
+
+| | Gold standard θετικό | Gold standard αρνητικό |
+|---|---:|---:|
+| Test θετικό | True positives | False positives |
+| Test αρνητικό | False negatives | True negatives |
+
+---
+
+## 4. Τα Δεδομένα
+
+Έστω η παρακάτω μελέτη validation:
+
+| | Gold standard θετικό | Gold standard αρνητικό |
+|---|---:|---:|
+| Test θετικό | 72 | 6 |
+| Test αρνητικό | 8 | 114 |
+
+Άρα:
+
+* μεταξύ των πραγματικά νοσούντων: 72 θετικά στα 80
+* μεταξύ των πραγματικά υγιών: 114 αρνητικά στα 120
+
+```{r}
+#| label: data
+
+tp_obs <- 72
+fn_obs <- 8
+fp_obs <- 6
+tn_obs <- 114
+
+n_disease <- tp_obs + fn_obs
+n_no_disease <- fp_obs + tn_obs
+
+validation_table <- tibble(
+  test_result = c("Test positive", "Test negative"),
+  gold_positive = c(tp_obs, fn_obs),
+  gold_negative = c(fp_obs, tn_obs)
+)
+
+validation_table
+```
+
+Οι κλασικές σημειακές εκτιμήσεις είναι:
+
+```{r}
+#| label: classical-estimates
+
+se_hat <- tp_obs / n_disease
+sp_hat <- tn_obs / n_no_disease
+
+tibble(
+  parameter = c("Sensitivity", "Specificity"),
+  estimate = c(se_hat, sp_hat)
+) %>%
+  mutate(estimate = scales::percent(estimate, accuracy = 0.1))
+```
+
+---
+
+## 5. Bayesian Μοντέλο
+
+Για την ευαισθησία:
+
+$$
+TP_{obs} \mid Se \sim \text{Binomial}(n_D, Se)
+$$
+
+Για την ειδικότητα:
+
+$$
+TN_{obs} \mid Sp \sim \text{Binomial}(n_{\bar{D}}, Sp)
+$$
+
+Με weak priors:
+
+$$
+Se \sim \text{Beta}(1,1)
+$$
+
+$$
+Sp \sim \text{Beta}(1,1)
+$$
+
+```{r}
+#| label: jags-model
+
+model_string <- "
+model {
+
+  # Priors
+  se ~ dbeta(alpha_se, beta_se)
+  sp ~ dbeta(alpha_sp, beta_sp)
+
+  # Likelihood
+  tp_obs ~ dbin(se, n_disease)
+  tn_obs ~ dbin(sp, n_no_disease)
+
+}
+"
+```
+
+---
+
+## 6. Εκτέλεση στο JAGS
+
+```{r}
+#| label: run-jags
+
+jags_data <- list(
+  tp_obs = tp_obs,
+  tn_obs = tn_obs,
+  n_disease = n_disease,
+  n_no_disease = n_no_disease,
+  alpha_se = 1,
+  beta_se = 1,
+  alpha_sp = 1,
+  beta_sp = 1
+)
+
+inits <- function() {
+  list(
+    se = runif(1, 0.70, 0.99),
+    sp = runif(1, 0.80, 0.99)
+  )
+}
+
+fit_validation <- run.jags(
+  model = model_string,
+  data = jags_data,
+  inits = inits,
+  monitor = c("se", "sp"),
+  n.chains = 3,
+  burnin = 2000,
+  sample = 10000,
+  thin = 1,
+  method = "rjags",
+  silent.jags = TRUE
+)
+
+summary(fit_validation)
+```
+
+---
+
+## 7. Διαγνωστικά
+
+```{r}
+#| label: trace
+#| fig-cap: "Trace plots και posterior densities για Se και Sp"
+
+plot(fit_validation, vars = c("se", "sp"))
+```
+
+---
+
+## 8. Αναλυτική Λύση και Σύγκριση
+
+Επειδή έχουμε Beta-Binomial μοντέλο, μπορούμε να υπολογίσουμε την posterior αναλυτικά.
+
+Για την ευαισθησία:
+
+$$
+Se \mid data \sim \text{Beta}(1 + TP,\; 1 + FN)
+$$
+
+Για την ειδικότητα:
+
+$$
+Sp \mid data \sim \text{Beta}(1 + TN,\; 1 + FP)
+$$
+
+```{r}
+#| label: analytical-comparison
+
+alpha_se_post <- 1 + tp_obs
+beta_se_post <- 1 + fn_obs
+
+alpha_sp_post <- 1 + tn_obs
+beta_sp_post <- 1 + fp_obs
+
+analytical_tbl <- tibble(
+  parameter = c("Se", "Sp"),
+  posterior_mean = c(
+    alpha_se_post / (alpha_se_post + beta_se_post),
+    alpha_sp_post / (alpha_sp_post + beta_sp_post)
+  ),
+  lower = c(
+    qbeta(0.025, alpha_se_post, beta_se_post),
+    qbeta(0.025, alpha_sp_post, beta_sp_post)
+  ),
+  upper = c(
+    qbeta(0.975, alpha_se_post, beta_se_post),
+    qbeta(0.975, alpha_sp_post, beta_sp_post)
+  )
+)
+
+analytical_tbl %>%
+  mutate(across(posterior_mean:upper, ~ scales::percent(.x, accuracy = 0.01)))
+```
+
+```{r}
+#| label: jags-summary
+
+draws_validation <- as.data.frame(do.call(rbind, as.mcmc.list(fit_validation)))
+
+jags_tbl <- draws_validation %>%
+  summarise(
+    se_mean = mean(se),
+    se_lower = quantile(se, 0.025),
+    se_upper = quantile(se, 0.975),
+    sp_mean = mean(sp),
+    sp_lower = quantile(sp, 0.025),
+    sp_upper = quantile(sp, 0.975)
+  )
+
+jags_tbl %>%
+  mutate(across(everything(), ~ scales::percent(.x, accuracy = 0.01)))
+```
+
+::: {.callout-note}
+Τα JAGS αποτελέσματα πρέπει να είναι πολύ κοντά στην αναλυτική λύση. Όπως και στο Lab 4, αυτό είναι ένας καλός τρόπος να επιβεβαιώσουμε ότι το μοντέλο έχει γραφτεί σωστά.
+:::
+
+---
+
+## 9. Posterior Κατανομές
+
+```{r}
+#| label: posterior-plot
+#| fig-cap: "Posterior κατανομές για Se και Sp"
+
+draws_validation %>%
+  pivot_longer(cols = c(se, sp), names_to = "parameter", values_to = "value") %>%
+  ggplot(aes(x = value, fill = parameter)) +
+  geom_density(alpha = 0.55) +
+  facet_wrap(~ parameter, scales = "free_y") +
+  scale_x_continuous(labels = scales::percent) +
+  labs(
+    x = "Τιμή",
+    y = "Posterior density",
+    title = "Bayesian validation με gold standard"
+  ) +
+  guides(fill = "none")
+```
+
+---
+
+## 10. Από Validation σε PPV και NPV
+
+Αν γνωρίζουμε ή υποθέτουμε έναν επιπολασμό στον πληθυσμό εφαρμογής, μπορούμε να μετατρέψουμε την posterior των $Se$ και $Sp$ σε posterior για PPV και NPV.
+
+Για παράδειγμα, ας θεωρήσουμε:
+
+$$
+Prev = 0.10
+$$
+
+```{r}
+#| label: ppv-npv
+
+prev_application <- 0.10
+
+draws_ppv_npv <- draws_validation %>%
+  mutate(
+    prev = prev_application,
+    ppv = (se * prev) / ((se * prev) + ((1 - sp) * (1 - prev))),
+    npv = (sp * (1 - prev)) / ((sp * (1 - prev)) + ((1 - se) * prev))
+  )
+
+draws_ppv_npv %>%
+  summarise(
+    ppv_mean = mean(ppv),
+    ppv_lower = quantile(ppv, 0.025),
+    ppv_upper = quantile(ppv, 0.975),
+    npv_mean = mean(npv),
+    npv_lower = quantile(npv, 0.025),
+    npv_upper = quantile(npv, 0.975)
+  ) %>%
+  mutate(across(everything(), ~ scales::percent(.x, accuracy = 0.01)))
+```
+
+```{r}
+#| label: ppv-npv-plot
+#| fig-cap: "Posterior κατανομές PPV και NPV για Prev = 10%"
+
+draws_ppv_npv %>%
+  select(ppv, npv) %>%
+  pivot_longer(everything(), names_to = "parameter", values_to = "value") %>%
+  ggplot(aes(x = value, fill = parameter)) +
+  geom_density(alpha = 0.55) +
+  facet_wrap(~ parameter, scales = "free_y") +
+  scale_x_continuous(labels = scales::percent) +
+  labs(
+    x = "Τιμή",
+    y = "Posterior density",
+    title = "PPV και NPV μετά το validation"
+  ) +
+  guides(fill = "none")
+```
+
+::: {.callout-note}
+Το validation δίνει πληροφορία για $Se$ και $Sp$. Η κλινική ή επιδημιολογική χρησιμότητα ενός τεστ όμως εξαρτάται και από τον επιπολασμό στον πληθυσμό όπου εφαρμόζεται.
+:::
+
+---
+
+## 11. Άσκηση
+
+Αλλάξτε τον επιπολασμό εφαρμογής σε:
+
+1. $Prev = 0.01$
+2. $Prev = 0.05$
+3. $Prev = 0.30$
+
+Για κάθε σενάριο:
+
+* υπολογίστε posterior mean και 95% credible interval για PPV
+* υπολογίστε posterior mean και 95% credible interval για NPV
+* εξηγήστε γιατί η PPV αλλάζει τόσο έντονα όταν αλλάζει ο επιπολασμός
+
+```{r}
+#| label: exercise-template
+#| eval: false
+
+prev_application <- 0.05
+
+draws_validation %>%
+  mutate(
+    ppv = (se * prev_application) /
+      ((se * prev_application) + ((1 - sp) * (1 - prev_application))),
+    npv = (sp * (1 - prev_application)) /
+      ((sp * (1 - prev_application)) + ((1 - se) * prev_application))
+  ) %>%
+  summarise(
+    ppv_mean = mean(ppv),
+    ppv_lower = quantile(ppv, 0.025),
+    ppv_upper = quantile(ppv, 0.975),
+    npv_mean = mean(npv),
+    npv_lower = quantile(npv, 0.025),
+    npv_upper = quantile(npv, 0.975)
+  )
+```
+
+---
+
+## 12. Τι κρατάμε από το Lab 7
+
+* Με gold standard μπορούμε να εκτιμήσουμε άμεσα $Se$ και $Sp$.
+* Το Bayesian validation μοντέλο είναι δύο απλά Binomial μοντέλα με Beta priors.
+* Η posterior για $Se$ και $Sp$ εκφράζει την αβεβαιότητα της validation μελέτης.
+* Αυτή η αβεβαιότητα μπορεί να περάσει σε PPV/NPV ή σε μελλοντικά μοντέλα πραγματικού επιπολασμού.
+
